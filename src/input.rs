@@ -11,7 +11,7 @@ pub fn print_step(step: Step, size: usize) {
         Step::TOKENIZED => format!("Tokenized:              {size} tokens"),
         Step::PARSED    => format!("Parsed:                 {size} AST nodes"),
         Step::GENERATED => format!("Generated out.asm:      {size} bytes\n[*.*] {}",
-            "Run:                    fasm.exe out.asm main.exe && main.exe"
+                                   "Run:                    fasm.exe out.asm main.exe && main.exe"
         ),
     };
     let current = step as usize;

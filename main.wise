@@ -1,10 +1,27 @@
 Format "PE64 Console"
-UseLib "library/stdlib.wlib"
 
-func main() {
-    asm {
-        mov rax, 1
-        mov rbx, 2
-        mov rbx, rax
-    }
+@data {
+    hStdOut        dq ?
+    bytesWritten   dd ?
+    str_hello      db 'Hello, World!', 13, 10, 0
+    hello_len      =  $ - str_hello - 1
+}
+
+@library kernel32{
+    GetStdHandle
+    WriteConsoleA
+    ExitProcess
+}
+
+asm {
+    sub rsp, 8
+    and rsp, -16
+    sub rsp, 40
+
+    invoke GetStdHandle, -11
+    mov [hStdOut], rax
+
+    invoke WriteConsoleA, [hStdOut], str_hello, hello_len, bytesWritten, 0
+
+    invoke ExitProcess, 0
 }

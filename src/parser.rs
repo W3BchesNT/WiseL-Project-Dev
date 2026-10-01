@@ -19,6 +19,11 @@ pub enum ASTNode {
         ty: String,
         value: Expr,
     },
+    Data(String),
+    Library {
+        name: String,
+        functions: Vec<String>,
+    }
 }
 
 pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
@@ -43,6 +48,73 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                     }
                 }
             }
+
+            TokenKind::DIRECTIVE => {
+                if token.value == "@data" {
+                    if let Some(next_t) = iter.peek() {
+                        if next_t.kind == TokenKind::LBRACE {
+                            iter.next(); // skip {
+                            let mut inner_content = String::new();
+                            let mut depth = 1;
+
+                            while let Some(inner) = iter.next() {
+                                if inner.kind == TokenKind::LBRACE {
+                                    depth += 1;
+                                    inner_content.push_str(&inner.value)
+                                } else if inner.kind == TokenKind::RBRACE {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        break;
+                                    }
+                                    inner_content.push_str(&inner.value);
+                                } else {
+                                    inner_content.push_str(&inner.value);
+                                    inner_content.push(' ');
+                                }
+                            }
+                            // if in @data -> asm {...}
+                            let trimmer = inner_content.trim();
+                            let cleaned = if trimmer.starts_with("asm") {
+                                let without_asm = &trimmer[3..].trim();
+                                if without_asm.starts_with('{') && without_asm.ends_with('}') {
+                                    &without_asm[1..without_asm.len() - 1]
+                                } else {
+                                    without_asm
+                                }
+                            } else {
+                                trimmer
+                            };
+
+                            statements.push(ASTNode::Data(cleaned.trim().to_string()));
+                        }
+                    }
+                } else if token.value == "@library" {
+                    // get library name (win)
+                    let lib_name = match iter.next() {
+                        Some(t) if t.kind == TokenKind::IDENT => t.value.clone(),
+                        _ => String::new(),
+                    };
+                    if let Some(t) = iter.next() {
+                        if t.kind == TokenKind::LBRACE {
+                            let mut functions = Vec::new();
+
+                            while let Some(inner) = iter.next() {
+                                if inner.kind == TokenKind::RBRACE {
+                                    break;
+                                }
+                                if inner.kind == TokenKind::IDENT {
+                                    functions.push(inner.value.clone());
+                                }
+                            }
+                            statements.push(ASTNode::Library {
+                                name: lib_name,
+                                functions,
+                            })
+                        }
+                    }
+                }
+            }
+
             TokenKind::ASM => {
                 if let Some(next_t) = iter.peek() {
                     if next_t.kind == TokenKind::LBRACE {
