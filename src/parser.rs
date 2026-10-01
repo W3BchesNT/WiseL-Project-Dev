@@ -19,6 +19,7 @@ pub enum ASTNode {
         ty: String,
         value: Expr,
     },
+    Return(Expr),
     Data(String),
     Library {
         name: String,
@@ -101,7 +102,7 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                         Some(t) if t.kind == TokenKind::IDENT => t.value.clone(),
                         _ => String::new(),
                     };
-                    
+
                     if let Some(block) = parse_braces_block(&mut iter) {
                         let functions: Vec<String> = block
                             .split_whitespace()
@@ -170,8 +171,13 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
 
                 let value = match iter.next() {
                     Some(t) if t.kind == TokenKind::NUMBER => {
-                        let val = t.value.parse::<i32>().unwrap_or(0);
-                        Expr::Number(val)
+                        match t.value.parse::<i32>() {
+                            Ok(value) => Expr::Number(value),
+                            Err(_) => {
+                                eprintln!("[ERROR.PARSER]: invalid i32 literal {:?}", t.value);
+                                break;
+                            }
+                        }
                     }
                     Some(t) if t.kind == TokenKind::IDENT => Expr::Ident(t.value.clone()),
                     other => {
@@ -192,6 +198,36 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                     ty,
                     value,
                 });
+            }
+            TokenKind::RETURN => {
+                let value = match iter.next() {
+                    Some(next_token) if next_token.kind == TokenKind::NUMBER => {
+                        match next_token.value.parse::<i32>() {
+                            Ok(value) => Expr::Number(value),
+                            Err(_) => {
+                                eprintln!("[ERROR.PARSER]: invalid i32 literal {:?}", next_token.value);
+                                break;
+                            }
+                        }
+                    }
+
+                    Some(next_token) if next_token.kind == TokenKind::IDENT => {
+                        Expr::Ident(next_token.value.clone())
+                    }
+
+                    other => {
+                        eprintln!("[ERROR.PARSER]: expected return value, got {:?}", other);
+                        break;
+                    }
+                };
+
+                if let Some(next_token) = iter.peek() {
+                    if next_token.kind == TokenKind::NEWLINE {
+                        iter.next();
+                    }
+                }
+
+                statements.push(ASTNode::Return(value));
             }
             TokenKind::END => {
                 break;

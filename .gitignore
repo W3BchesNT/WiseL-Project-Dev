@@ -1,10 +1,18 @@
 # Compiled Rust stuff
 target
+out.ll
+out.exe
+
+# Other
+.tools/
 
 # RustRover
 .idea
 
 # ???
-# out.asm
+out.asm
 # main.exe
 # wiselc.exe
+
+
+src/__llvm_codegen.rs

@@ -68,7 +68,7 @@ pub fn generate(ast: &[ASTNode]) -> String {
             }
 
             asm.push_str("section '.idata' import data readable writeable\n");
-            
+
             let mut libs: Vec<(String, Vec<String>)> = Vec::new();
             for node in ast {
                 if let ASTNode::Library { name, functions } = node {

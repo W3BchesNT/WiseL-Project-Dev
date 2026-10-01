@@ -1,6 +1,3 @@
-use std::iter::Peekable;
-use std::str::CharIndices;
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TokenKind {
     // === 1. Literals & Identifiers (Data) ===
