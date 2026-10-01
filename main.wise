@@ -1,0 +1,10 @@
+Format "PE64 Console"
+UseLib "library/stdlib.wlib"
+
+func main() {
+    asm {
+        mov rax, 1
+        mov rbx, 2
+        mov rbx, rax
+    }
+}

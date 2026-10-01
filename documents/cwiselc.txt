@@ -1,0 +1,15 @@
+Format "PE64 Console"
+UseLib "library/test.wlib"
+
+func main() {
+    GetStdHandle()
+    printf("What is your name?\n")
+    let name: *u8 = scanf(buf1)
+    if (name == "wisel\r\n") {
+        printf("[wiselc] Hello, World!\n")
+    } else {
+        printf("[console], ")
+        printf(name, "\n")
+    }
+    ExitProcess()
+}

@@ -1,0 +1,8 @@
+Format "PE64 CONSOLE"
+UseLib "library/stdlib.wlib"
+
+func main() {
+    GetStdHandle()
+    println("Hello World!")
+    ExitProcess()
+}

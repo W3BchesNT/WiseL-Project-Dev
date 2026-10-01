@@ -1,0 +1,119 @@
+@library kernel32 {
+    GetStdHandle
+    WriteConsoleA
+    ReadConsoleW
+    FlushConsoleInputBuffer
+    WideCharToMultiByte
+    lstrlenA
+    SetConsoleOutputCP
+    ExitProcess
+    CreateFileA
+    ReadFile
+    WriteFile
+    CloseHandle
+    DeleteFileA
+    CopyFileA
+    GetFileSize
+}
+
+static fileRead: i32
+static fileWritten: i32
+static fileHandle: i64
+static fileSize: i32
+
+func open_file(str path, i32 access, i32 creation) -> i64 {
+    asm {
+        mov r10d, edx
+        mov r11d, r8d
+        xor r9d, r9d
+        mov [rsp + 32], r9
+        invoke CreateFileA, rcx, r10d, 7, 0, r11d, 128, 0
+        jmp .func_end_open_file
+    }
+}
+
+func read_file(i64 handle, str buffer, i32 size) -> i32 {
+    asm {
+        invoke ReadFile, rcx, rdx, r8d, fileRead, 0
+        mov eax, [fileRead]
+        jmp .func_end_read_file
+    }
+}
+
+func write_file(i64 handle, str buffer, i32 size) -> i32 {
+    asm {
+        invoke WriteFile, rcx, rdx, r8d, fileWritten, 0
+        mov eax, [fileWritten]
+        jmp .func_end_write_file
+    }
+}
+
+func close_file(i64 handle) {
+    asm {
+        invoke CloseHandle, rcx
+        jmp .func_end_close_file
+    }
+}
+
+func delete_file(str path) {
+    asm {
+        invoke DeleteFileA, rcx
+        jmp .func_end_delete_file
+    }
+}
+
+func copy_file(str src, str dst, i32 overwrite) {
+    asm {
+        test r8d, r8d
+        setz r8b
+        movzx r8d, r8b
+        invoke CopyFileA, rcx, rdx, r8d
+        jmp .func_end_copy_file
+    }
+}
+
+func file_size(i64 handle) -> i32 {
+    asm {
+        invoke GetFileSize, rcx, 0
+        jmp .func_end_file_size
+    }
+}
+
+func read_all_file(str path, str buffer) -> i32 {
+    asm {
+        mov [fileHandle], rcx
+        mov [rsp + 40], rdx
+        invoke CreateFileA, rcx, 80000000h, 7, 0, 3, 128, 0
+        mov [fileHandle], rax
+        invoke GetFileSize, rax, 0
+        mov [fileSize], eax
+        mov rcx, [fileHandle]
+        mov rdx, [rsp + 40]
+        mov r8d, [fileSize]
+        invoke ReadFile, rcx, rdx, r8d, fileRead, 0
+        mov rcx, [fileHandle]
+        invoke CloseHandle, rcx
+        mov eax, [fileRead]
+        jmp .func_end_read_all_file
+    }
+}
+
+func write_all_file(str path, str buffer) -> i32 {
+    asm {
+        mov [fileHandle], rcx
+        mov [rsp + 40], rdx
+        invoke lstrlenA, rdx
+        mov [fileSize], eax
+        mov rcx, [fileHandle]
+        invoke CreateFileA, rcx, 40000000h, 0, 0, 2, 128, 0
+        mov [fileHandle], rax
+        mov rcx, rax
+        mov rdx, [rsp + 40]
+        mov r8d, [fileSize]
+        invoke WriteFile, rcx, rdx, r8d, fileWritten, 0
+        mov rcx, [fileHandle]
+        invoke CloseHandle, rcx
+        mov eax, [fileWritten]
+        jmp .func_end_write_all_file
+    }
+}

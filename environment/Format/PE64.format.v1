@@ -1,0 +1,23 @@
+Format "{data}"
+#IF {data.upper} == "PE64 CONSOLE":
+    first.append(fasm) {
+        format PE64 CONSOLE
+        entry start
+    }
+
+    library.append(fasm) {
+        include 'win64w.inc'
+    }
+
+    .data.append(fasm) {
+            wisel_v1 dd ?
+    }
+
+    .text.append(fasm) {
+        start:
+            {@main}
+    }
+
+    .idata.append(fasm) {
+        {@library}
+    }

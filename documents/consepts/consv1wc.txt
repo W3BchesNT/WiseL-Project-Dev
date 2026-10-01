@@ -1,0 +1,9 @@
+Format "PE64 CONSOLE"
+UseLib "library/stdlib.wlib" 
+// UseRule "--dangermode:1 --dangerzone:predict"
+
+func main() {
+    GetStdHandle()
+    println("Hello World!")
+    ExitProcess()
+}

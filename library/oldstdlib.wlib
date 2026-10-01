@@ -1,0 +1,176 @@
+@include.inc {
+    "win64w.inc"
+}
+
+@library kernel32 {
+    GetStdHandle
+    WriteConsoleA
+    ReadConsoleW
+    FlushConsoleInputBuffer
+    WideCharToMultiByte
+    lstrlenA
+    SetConsoleOutputCP
+    ExitProcess
+}
+
+static hStdOut: i64
+static hStdIn: i64
+static written: i32
+static readLen: i32
+static newline: str = "\r\n"
+static readBuffer: i8 = [512]
+static tempWide: i16 = [256]
+static numBuffer: i8 = [32]
+
+func GetStdHandle() {
+    asm {
+        invoke GetStdHandle, -11
+        mov [hStdOut], rax
+        invoke GetStdHandle, -10
+        mov [hStdIn], rax
+    }
+}
+
+func SetConsoleOutputCP() {
+    asm {
+        invoke SetConsoleOutputCP, 65001
+    }
+}
+
+func readln() -> str {
+    asm {
+        sub rsp, 64
+        invoke FlushConsoleInputBuffer, [hStdIn]
+        lea rdx, [tempWide]
+        invoke ReadConsoleW, [hStdIn], rdx, 255, readLen, 0
+    }
+    let chars: i32 = readLen
+    if (chars == 0) {
+        asm {
+            mov byte [readBuffer], 0
+        }
+    } else {
+        asm {
+            mov ecx, 65001
+            xor edx, edx
+            lea r8, [tempWide]
+            mov r9d, [readLen]
+            lea rax, [readBuffer]
+            mov [rsp + 32], rax
+            mov dword [rsp + 40], 512
+            mov qword [rsp + 48], 0
+            mov qword [rsp + 56], 0
+            call [WideCharToMultiByte]
+            mov [readLen], eax
+        }
+
+        let converted: i32 = readLen
+
+        if (converted < 2) {
+            asm {
+                mov byte [readBuffer], 0
+            }
+        } else {
+            asm {
+                mov ecx, [readLen]
+                lea rax, [readBuffer]
+                mov byte [rax + rcx - 1], 0
+                mov byte [rax + rcx - 2], 0
+            }
+        }
+    }
+
+    asm {
+        lea rax, [readBuffer]
+        add rsp, 64
+        jmp .func_end_readln
+    }
+}
+
+func print_str(str text) {
+    asm {
+        push rbx
+        mov rbx, rcx
+        invoke lstrlenA, rcx
+        mov r8, rax
+        invoke WriteConsoleA, [hStdOut], rbx, r8, written, 0
+        pop rbx
+        ret
+    }
+}
+
+func print_int(i32 num) {
+    asm {
+        push rbx
+        push r12
+        mov eax, ecx
+        xor r12d, r12d
+        test eax, eax
+        jns .pi_pos
+        neg eax
+        mov r12d, 1
+    .pi_pos:
+        lea rbx, [numBuffer + 32]
+        dec rbx
+        mov byte [rbx], 0
+    .pi_div:
+        xor edx, edx
+        mov ecx, 10
+        div ecx
+        add dl, '0'
+        dec rbx
+        mov byte [rbx], dl
+        test eax, eax
+        jnz .pi_div
+        test r12d, r12d
+        jz .pi_write
+        dec rbx
+        mov byte [rbx], '-'
+    .pi_write:
+        lea r8, [numBuffer + 32]
+        sub r8, rbx
+        invoke WriteConsoleA, [hStdOut], rbx, r8, written, 0
+        pop r12
+        pop rbx
+        ret
+    }
+}
+
+func println(args[] ... ) {
+    @args[] {
+        if (args[].type == str) {
+            print_str(args[str].value)
+        }
+        if (args[].type == int) {
+            print_int(args[int].value)
+        }
+    }
+    asm {
+        invoke WriteConsoleA, [hStdOut], newline, 2, written, 0
+    }
+}
+
+func printf(str text) {
+    asm {
+        push rbx
+        mov rbx, rcx
+        invoke lstrlenA, rcx
+        mov r8, rax
+        invoke WriteConsoleA, [hStdOut], rbx, r8, written, 0
+        pop rbx
+        ret
+    }
+}
+
+func endline() {
+    asm {
+        invoke WriteConsoleA, [hStdOut], newline, 2, written, 0
+        ret
+    }
+}
+
+func ExitProcess() {
+    asm {
+        invoke ExitProcess, 0
+    }
+}

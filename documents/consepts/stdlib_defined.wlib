@@ -1,0 +1,124 @@
+@include.inc {
+    "win64w.inc"
+}
+
+@library kernel32 {
+    GetStdHandle
+    WriteConsoleA
+    ExitProcess
+}
+
+@DEFINE "LINUX" {
+
+}
+
+#DEFINE MAIN {
+    @USE[BEFORE] {
+        GetStdHandle()
+    }
+
+    @USE[AFTER] {
+        ExitProcess()
+    }
+}
+
+let hStdOut: i64
+let written: i32
+let newline: str = "\r\n"
+
+func print_str(str text) {
+    let mut ptr = text
+    let mut len: i32 = 0
+
+    while (true) {
+        if(ptr[len] == 0) {
+            asm {
+                invoke WriteConsoleA, [{hStdOut}], {ptr}, {len}, {written}, 0
+            }
+            break
+        }
+        else {
+            len++
+        }
+    }
+}
+
+func print_int(i32 num) {
+    asm {
+        push r10
+        push r11
+        lea rsi, [rsp + 31]
+        mov byte [rsi], 0
+        mov rax, rcx
+        mov r10, 10
+    .pi_loop:
+        xor rdx, rdx
+        div r10
+        add dl, 48
+        dec rsi
+        mov [rsi], dl
+        test rax, rax
+        jnz .pi_loop
+        lea r11, [rsi]
+        xor r8d, r8d
+    .pi_len:
+        cmp byte [r11 + r8], 0
+        je .pi_write
+        inc r8
+        jmp .pi_len
+    .pi_write:
+        invoke WriteConsoleA, [{hStdOut}], r11, r8, {written}, 0
+        pop r11
+        pop r10
+    }
+}
+
+func println(args[] ... ) {
+    @args[] {
+        if (args[].type == str) {
+            print_str(args[str].value)
+        }
+        if (args[].type == int) {
+            print_int(args[int].value)
+        }
+    }
+    asm {
+        invoke WriteConsoleA, [hStdOut], newline, 2, written, 0
+    }
+}
+
+func printf(str text) {
+    let mut ptr = text
+    let mut len: i32 = 0
+
+    while (true) {
+        if(ptr[len] == 0) {
+            asm {
+                invoke WriteConsoleA, [hStdOut], {ptr}, {len}, written, 0
+            }
+            break
+        }
+        else {
+            len++
+        }
+    }
+}
+
+func endline() {
+    asm {
+        invoke WriteConsoleA, [hStdOut], newline, 2, written, 0
+    }
+}
+
+func ExitProcess() {
+    asm {
+        invoke ExitProcess, 0
+    }
+}
+
+func GetStdHandle() {
+    asm {
+        invoke GetStdHandle, -11
+        mov [hStdOut], rax
+    }
+}

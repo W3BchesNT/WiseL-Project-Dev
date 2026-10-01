@@ -1,0 +1,34 @@
+Format "PE64 CONSOLE"
+UseLib "library/stdlib.wlib"
+UseLib "library/filesystem.wlib"
+
+static buf: i8 = [512]
+
+func main() {
+    GetStdHandle()
+    SetConsoleOutputCP()
+    
+    write_all_file("test.txt", "Hello World!")
+    
+    let n: i32 = read_all_file("test.txt", buf)
+    
+    asm {
+        lea rax, [buf]
+        mov rcx, rbx
+        mov byte [rax + rcx], 0
+    }
+    
+    println("Read bytes: ", n)
+    printf("File content: ")
+    
+    asm {
+        lea rcx, [buf]
+        call func_print_str
+    }
+    
+    endline()
+    
+    copy_file("test.txt", "test_copy.txt", 1)
+    
+    ExitProcess()
+}

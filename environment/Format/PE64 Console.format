@@ -1,0 +1,16 @@
+@include.inc {
+    "win64w.inc"
+}
+
+@section '.data' data readable writeable
+    wisel_v1 dd ?
+    @data:
+
+section '.text' code readable executable
+@start:
+    @start.append[start]
+    @start.append[args[] ...]
+    @start.append[end]
+
+section '.idata' import data readable writeable
+    @library

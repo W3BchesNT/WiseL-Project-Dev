@@ -1,0 +1,10 @@
+# Compiled Rust stuff
+target
+
+# RustRover
+.idea
+
+# ???
+# out.asm
+# main.exe
+# wiselc.exe
