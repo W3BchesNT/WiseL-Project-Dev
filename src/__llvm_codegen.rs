@@ -4,6 +4,7 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::targets::TargetMachine;
 use inkwell::values::{IntValue, PointerValue};
+use inkwell::InlineAsmDialect;
 
 use crate::parser::{ASTNode, Expr};
 
@@ -60,6 +61,28 @@ pub fn generate(ast: &[ASTNode]) -> Result<String, String> {
 
                 variables.insert(name.clone(), variable);
             }
+            ASTNode::Asm(inline_code) => {
+                // TODO: Convert FASM into ASM before feeding the inline code into LLVM IR?
+                // Right now, эээ хз в общем завтра
+                continue;
+
+                // Create a function signature that will be a template for inlining assembly
+                let asm_type = context.void_type().fn_type(&[], false);
+                let asm = context.create_inline_asm(
+                    asm_type,
+                    inline_code.to_owned(),
+                    // 'constraints'
+                    String::new(),
+                    true,
+                    false,
+                    Some(InlineAsmDialect::Intel),
+                    false,
+                );
+
+                builder
+                    .build_indirect_call(asm_type, asm, &[], "")
+                    .map_err(|error| error.to_string())?;
+            },
             ASTNode::Return(value) => {
                 let value = expression(&context, &builder, &variables, value)?;
                 builder

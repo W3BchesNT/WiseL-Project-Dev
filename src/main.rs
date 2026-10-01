@@ -24,17 +24,19 @@ fn main() {
     print_step(Step::Parsed, ast.len(), &options);
 
     // /*
-    let asm: String = generate(&ast);
-    if let Err(e) = fs::write("out.asm", &asm) {
-        eprintln!("[ERROR] Cannot write out.asm: {e}");
-        std::process::exit(1);
+    if !options.__llvm {
+        let asm: String = generate(&ast);
+        if let Err(e) = fs::write("out.asm", &asm) {
+            eprintln!("[ERROR] Cannot write out.asm: {e}");
+            std::process::exit(1);
+        }
+        print_step(Step::Generated, asm.len(), &options);
+
+        return;
     }
-    print_step(Step::Generated, asm.len(), &options);
     // */
 
     // /*
-    if !options.__llvm { return; }
-
     let ir: String = __llvm_codegen::generate(&ast).unwrap();
     let output_filename: std::path::Display = options.output.display();
     let generated: Vec<u8> = if options.run {
