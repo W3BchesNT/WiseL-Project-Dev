@@ -127,7 +127,7 @@ pub fn tokenize(source: &str) -> Vec<Token> {
         if ch == '@' {
             let mut word = String::from("@");
             while let Some(&(_, c)) = chars.peek() {
-                if c.is_alphanumeric() || c == '_' {
+                if c.is_alphanumeric() || c == '_' || c == '.' {
                     word.push(c);
                     chars.next();
                 } else {

@@ -23,7 +23,37 @@ pub enum ASTNode {
     Library {
         name: String,
         functions: Vec<String>,
+    },
+    IncludeInc(String),
+}
+
+fn parse_braces_block(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>) -> Option<String> {
+    let next_t = iter.peek()?;
+    if next_t.kind != TokenKind::LBRACE {
+        return None;
     }
+    iter.next();
+
+    let mut content = String::new();
+    let mut depth = 1;
+
+    while let Some(inner) = iter.next() {
+        if inner.kind == TokenKind::LBRACE {
+            depth += 1;
+            content.push_str(&inner.value);
+        } else if inner.kind == TokenKind::RBRACE {
+            depth -= 1;
+            if depth == 0 {
+                break;
+            }
+            content.push_str(&inner.value);
+        } else {
+            content.push_str(&inner.value);
+            content.push(' ');
+        }
+    }
+
+    Some(content.trim().to_string())
 }
 
 pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
@@ -51,94 +81,51 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
 
             TokenKind::DIRECTIVE => {
                 if token.value == "@data" {
-                    if let Some(next_t) = iter.peek() {
-                        if next_t.kind == TokenKind::LBRACE {
-                            iter.next(); // skip {
-                            let mut inner_content = String::new();
-                            let mut depth = 1;
-
-                            while let Some(inner) = iter.next() {
-                                if inner.kind == TokenKind::LBRACE {
-                                    depth += 1;
-                                    inner_content.push_str(&inner.value)
-                                } else if inner.kind == TokenKind::RBRACE {
-                                    depth -= 1;
-                                    if depth == 0 {
-                                        break;
-                                    }
-                                    inner_content.push_str(&inner.value);
-                                } else {
-                                    inner_content.push_str(&inner.value);
-                                    inner_content.push(' ');
-                                }
-                            }
-                            // if in @data -> asm {...}
-                            let trimmer = inner_content.trim();
-                            let cleaned = if trimmer.starts_with("asm") {
-                                let without_asm = &trimmer[3..].trim();
-                                if without_asm.starts_with('{') && without_asm.ends_with('}') {
-                                    &without_asm[1..without_asm.len() - 1]
-                                } else {
-                                    without_asm
-                                }
+                    if let Some(inner_content) = parse_braces_block(&mut iter) {
+                        let trimmer = inner_content.trim();
+                        let cleaned = if trimmer.starts_with("asm") {
+                            let without_asm = &trimmer[3..].trim();
+                            if without_asm.starts_with('{') && without_asm.ends_with('}') {
+                                &without_asm[1..without_asm.len() - 1]
                             } else {
-                                trimmer
-                            };
+                                without_asm
+                            }
+                        } else {
+                            trimmer
+                        };
 
-                            statements.push(ASTNode::Data(cleaned.trim().to_string()));
-                        }
+                        statements.push(ASTNode::Data(cleaned.trim().to_string()));
                     }
                 } else if token.value == "@library" {
-                    // get library name (win)
                     let lib_name = match iter.next() {
                         Some(t) if t.kind == TokenKind::IDENT => t.value.clone(),
                         _ => String::new(),
                     };
-                    if let Some(t) = iter.next() {
-                        if t.kind == TokenKind::LBRACE {
-                            let mut functions = Vec::new();
+                    
+                    if let Some(block) = parse_braces_block(&mut iter) {
+                        let functions: Vec<String> = block
+                            .split_whitespace()
+                            .map(|s| s.to_string())
+                            .filter(|s| !s.is_empty())
+                            .collect();
 
-                            while let Some(inner) = iter.next() {
-                                if inner.kind == TokenKind::RBRACE {
-                                    break;
-                                }
-                                if inner.kind == TokenKind::IDENT {
-                                    functions.push(inner.value.clone());
-                                }
-                            }
-                            statements.push(ASTNode::Library {
-                                name: lib_name,
-                                functions,
-                            })
-                        }
+                        statements.push(ASTNode::Library {
+                            name: lib_name,
+                            functions,
+                        });
+                    }
+                } else if token.value == "@include.inc" {
+                    if let Some(content) = parse_braces_block(&mut iter) {
+                        // Чистим от кавычек, если передали строчку в кавычках
+                        let inc_val = content.trim_matches('"').trim_matches('\'').to_string();
+                        statements.push(ASTNode::IncludeInc(inc_val));
                     }
                 }
             }
 
             TokenKind::ASM => {
-                if let Some(next_t) = iter.peek() {
-                    if next_t.kind == TokenKind::LBRACE {
-                        iter.next();
-                        let mut asm_content = String::new();
-                        let mut depth = 1;
-
-                        while let Some(inner_token) = iter.next() {
-                            if inner_token.kind == TokenKind::LBRACE {
-                                depth += 1;
-                                asm_content.push_str(&inner_token.value);
-                            } else if inner_token.kind == TokenKind::RBRACE {
-                                depth -= 1;
-                                if depth == 0 {
-                                    break;
-                                }
-                                asm_content.push_str(&inner_token.value);
-                            } else {
-                                asm_content.push_str(&inner_token.value);
-                                asm_content.push(' ');
-                            }
-                        }
-                        statements.push(ASTNode::Asm(asm_content.trim().to_string()));
-                    }
+                if let Some(asm_content) = parse_braces_block(&mut iter) {
+                    statements.push(ASTNode::Asm(asm_content));
                 }
             }
             TokenKind::LET => {
@@ -151,7 +138,6 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                     }
                 }
 
-                // Variable name
                 let name = match iter.next() {
                     Some(t) if t.kind == TokenKind::IDENT => t.value.clone(),
                     other => {
@@ -160,14 +146,12 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                     }
                 };
 
-                // Optionally check for a colon, if present.
                 if let Some(t) = iter.peek() {
                     if t.kind == TokenKind::COLON || (t.kind == TokenKind::IDENT && t.value == ":") {
                         iter.next();
                     }
                 }
 
-                // Data type (e.g. i32)
                 let ty = match iter.next() {
                     Some(t) if t.kind == TokenKind::IDENT => t.value.clone(),
                     other => {
@@ -176,7 +160,6 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                     }
                 };
 
-                // Expect assignment operator `=`
                 match iter.next() {
                     Some(t) if t.kind == TokenKind::ASSIGN => {}
                     other => {
@@ -185,7 +168,6 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                     }
                 };
 
-                // Value expression
                 let value = match iter.next() {
                     Some(t) if t.kind == TokenKind::NUMBER => {
                         let val = t.value.parse::<i32>().unwrap_or(0);
