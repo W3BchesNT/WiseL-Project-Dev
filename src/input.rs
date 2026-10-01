@@ -2,6 +2,7 @@ pub struct Options {
     pub input : std::path::PathBuf,
     pub output: std::path::PathBuf,
     pub run   : bool,
+    pub __llvm: bool,
 }
 
 pub fn get_options() -> Options {
@@ -10,12 +11,14 @@ pub fn get_options() -> Options {
         .unwrap_or_else(|| String::from("main.wise"));
     let mut input = None;
     let mut run = false;
+    let mut __llvm = false;
 
     // The first argument is 'program_name', so we skip it
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
-            "--run" => run = true,
-            _       => {
+            "--run"  => run = true,
+            "--llvm" => __llvm = true,
+            _        => {
                 if arg.ends_with(".wise") && input.is_none() {
                     input = Some(std::path::PathBuf::from(arg));
                 } else {
@@ -30,6 +33,7 @@ pub fn get_options() -> Options {
         input : input.unwrap_or_else(|| "main.wise".into()),
         output: if run { "out.exe" } else { "out.ll" }.into(),
         run,
+        __llvm,
     }
 }
 

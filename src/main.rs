@@ -3,6 +3,7 @@ mod input;
 mod lexer;
 mod native;
 mod parser;
+mod __llvm_codegen;
 
 // "use kawaii::*;"
 use codegen::*;
@@ -31,8 +32,10 @@ fn main() {
     print_step(Step::Generated, asm.len(), &options);
     // */
 
-    /*
-    let ir: String = generate(&ast);
+    // /*
+    if !options.__llvm { return; }
+
+    let ir: String = __llvm_codegen::generate(&ast).unwrap();
     let output_filename: std::path::Display = options.output.display();
     let generated: Vec<u8> = if options.run {
         native::generate_executable(&ir).unwrap()
@@ -49,11 +52,11 @@ fn main() {
         let executable = fs::canonicalize(&options.output).unwrap();
         let status = std::process::Command::new(executable)
             .status()
-            .map_err(|error| format!("Cannot run {output_filename}: {error}"))
+            .map_err(|error| format!("[ERROR] Cannot run {output_filename}: {error}"))
             .unwrap();
         let exit_code = status.code().unwrap();
 
         print_step(Step::Run, exit_code as usize, &options);
     }
-     */
+    // */
 }

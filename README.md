@@ -8,13 +8,14 @@ A simple programming language
 cargo run
 ```
 
-You can add optional arguments, such as `filename.wise` or `--run`:
+You can add optional arguments, such as `filename.wise`, `--run`, or `--llvm`:
 
 ```bash
 cargo run -- entry.wise
-cargo run -- --run
+cargo run -- --run --llvm input.wise
 cargo run -- --run input.wise
 cargo run -- input.wise --run
 ```
 
-Adding `--run` will use `clang` and produce a binary for your platform. Without the flag, you get LLVM IR (`out.ll`)
+Adding `--llvm` will use `inkwell` and `clang` and produce a binary for your platform.
+Without the `--run` flag, you get LLVM IR (`out.ll`)
