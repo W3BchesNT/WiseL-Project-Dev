@@ -1,3 +1,6 @@
+use std::iter::Peekable;
+use std::str::CharIndices;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TokenKind {
     // === 1. Literals & Identifiers (Data) ===
@@ -33,6 +36,7 @@ pub struct Token {
 fn get_keyword_type(word: &str) -> TokenKind {
     match word {
         "func"   => TokenKind::FUNC,
+        "fn"     => TokenKind::FUNC,
         "if"     => TokenKind::IF,
         "else"   => TokenKind::ELSE,
         "while"  => TokenKind::WHILE,

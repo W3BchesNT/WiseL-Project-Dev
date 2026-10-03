@@ -19,13 +19,16 @@ pub enum ASTNode {
         ty: String,
         value: Expr,
     },
-    Return(Expr),
     Data(String),
     Library {
         name: String,
         functions: Vec<String>,
     },
     IncludeInc(String),
+    Func {
+        name: String,
+        body: String,
+    },
 }
 
 fn parse_braces_block(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>) -> Option<String> {
@@ -80,6 +83,36 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                 }
             }
 
+            TokenKind::FUNC => {
+                let func_name = match iter.next() {
+                    Some(t) if t.kind == TokenKind::IDENT => t.value.clone(),
+                    _ => String::new(),
+                };
+
+                if let Some(t) = iter.next() {
+                    if t.kind == TokenKind::LPAREN {
+                        let mut depth = 1;
+                        while let Some(inner) = iter.next() {
+                            if inner.kind == TokenKind::LPAREN {
+                                depth += 1;
+                            } else if inner.kind == TokenKind::RPAREN {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let Some(body_content) = parse_braces_block(&mut iter) {
+                    statements.push(ASTNode::Func {
+                        name: func_name,
+                        body: body_content,
+                    });
+                }
+            }
+
             TokenKind::DIRECTIVE => {
                 if token.value == "@data" {
                     if let Some(inner_content) = parse_braces_block(&mut iter) {
@@ -102,7 +135,7 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                         Some(t) if t.kind == TokenKind::IDENT => t.value.clone(),
                         _ => String::new(),
                     };
-
+                    
                     if let Some(block) = parse_braces_block(&mut iter) {
                         let functions: Vec<String> = block
                             .split_whitespace()
@@ -117,7 +150,6 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                     }
                 } else if token.value == "@include.inc" {
                     if let Some(content) = parse_braces_block(&mut iter) {
-                        // Чистим от кавычек, если передали строчку в кавычках
                         let inc_val = content.trim_matches('"').trim_matches('\'').to_string();
                         statements.push(ASTNode::IncludeInc(inc_val));
                     }
@@ -171,13 +203,8 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
 
                 let value = match iter.next() {
                     Some(t) if t.kind == TokenKind::NUMBER => {
-                        match t.value.parse::<i32>() {
-                            Ok(value) => Expr::Number(value),
-                            Err(_) => {
-                                eprintln!("[ERROR.PARSER]: invalid i32 literal {:?}", t.value);
-                                break;
-                            }
-                        }
+                        let val = t.value.parse::<i32>().unwrap_or(0);
+                        Expr::Number(val)
                     }
                     Some(t) if t.kind == TokenKind::IDENT => Expr::Ident(t.value.clone()),
                     other => {
@@ -198,36 +225,6 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                     ty,
                     value,
                 });
-            }
-            TokenKind::RETURN => {
-                let value = match iter.next() {
-                    Some(next_token) if next_token.kind == TokenKind::NUMBER => {
-                        match next_token.value.parse::<i32>() {
-                            Ok(value) => Expr::Number(value),
-                            Err(_) => {
-                                eprintln!("[ERROR.PARSER]: invalid i32 literal {:?}", next_token.value);
-                                break;
-                            }
-                        }
-                    }
-
-                    Some(next_token) if next_token.kind == TokenKind::IDENT => {
-                        Expr::Ident(next_token.value.clone())
-                    }
-
-                    other => {
-                        eprintln!("[ERROR.PARSER]: expected return value, got {:?}", other);
-                        break;
-                    }
-                };
-
-                if let Some(next_token) = iter.peek() {
-                    if next_token.kind == TokenKind::NEWLINE {
-                        iter.next();
-                    }
-                }
-
-                statements.push(ASTNode::Return(value));
             }
             TokenKind::END => {
                 break;

@@ -1,0 +1,32 @@
+include 'extension/format.inc'
+include 'extension/wir_ll.inc'
+set_build X64, Windows, Console
+
+entry start
+
+code_block
+  start:
+	sys_prolog
+
+	; GetStdHandle -11 (STDOUT)
+	invoke	GetStdHandle, -11
+	sys_store hStdOut, t0_64
+
+	sys_load  t0_64, result
+	sys_const t1_64, 10
+	sys_mul   t2_64, t0_64, t1_64
+	sys_store result, t2_64
+
+	sys_load  t0_64, hStdOut
+	invoke	WriteConsoleA, t0_64, str_hello, str_hello_len, bytesWritten, 0
+	invoke	ExitProcess, 0
+
+data_block
+	sys_var    hStdOut, i64
+	sys_var    bytesWritten, i32
+	sys_var    result, i64, 5
+	sys_string str_hello, <'WIR Language completely unified!', 13, 10, 0>
+
+import_block
+	library kernel32, 'KERNEL32.DLL'
+	import kernel32, GetStdHandle, 'GetStdHandle', WriteConsoleA, 'WriteConsoleA', ExitProcess, 'ExitProcess'

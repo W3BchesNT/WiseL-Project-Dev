@@ -1,5 +1,0 @@
-let first: i32 = 10
-let second: i32 = 20
-let mut result: i32 = first + second
-
-return result

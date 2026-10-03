@@ -1,18 +1,30 @@
-Format "ELF64 executable"
-
 @data {
-    str_hello db 'Hello, World!', 10
-    hello_len = $ - str_hello
+    hStdOut        dq ?
+    bytesWritten   dd ?
+    str_hello      db 'Hello, World!', 13, 10, 0
+    hello_len      =  $ - str_hello - 1
 }
 
-asm {
-    mov rax, 1
-    mov rdi, 1
-    lea rsi, [str_hello]
-    mov rdx, hello_len
-    syscall
+@include.inc {
+    "win64w.inc"
+}
 
-    mov rax, 60
-    mov rdi, 0
-    syscall
+@library kernel32{
+    GetStdHandle
+    WriteConsoleA
+    ExitProcess
+}
+
+fn main() {
+    asm {
+        sys_prolog
+
+        invoke GetStdHandle, -11
+        sys_store hStdOut, t0_64
+
+        sys_load t0_64, hStdOut
+        invoke WriteConsoleA, t0_64, str_hello, hello_len, bytesWritten, 0
+
+        invoke ExitProcess, 0
+    }
 }
