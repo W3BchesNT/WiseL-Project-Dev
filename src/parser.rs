@@ -10,7 +10,7 @@ pub enum Expr {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum ASTNode {
-    Format(String),
+    Target(String),
     UseLib(String),
     Asm(String),
     Let {
@@ -29,6 +29,10 @@ pub enum ASTNode {
         name: String,
         body: String,
     },
+    TargetBlock {
+        target: String,
+        nodes: Vec<ASTNode>,
+    }
 }
 
 fn parse_braces_block(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>) -> Option<String> {
@@ -51,6 +55,8 @@ fn parse_braces_block(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>
                 break;
             }
             content.push_str(&inner.value);
+        } else if inner.kind == TokenKind::NEWLINE {
+            content.push('\n');
         } else {
             content.push_str(&inner.value);
             content.push(' ');
@@ -66,19 +72,29 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
 
     while let Some(token) = iter.next() {
         match token.kind {
-            TokenKind::FORMAT => {
+            TokenKind::IDENT if token.value == "Target" => {
                 if let Some(t) = iter.next() {
                     if t.kind == TokenKind::STRING {
-                        let fmt_val = t.value.trim_matches('"').trim_matches('\'').to_string();
-                        statements.push(ASTNode::Format(fmt_val));
+                        let target_val = t.value.trim_matches('"').trim_matches('\'').to_string();
+                        statements.push(ASTNode::Target(target_val));
                     }
                 }
             }
             TokenKind::USELIB => {
                 if let Some(t) = iter.next() {
                     if t.kind == TokenKind::STRING {
-                        let lib_val = t.value.trim_matches('"').trim_matches('\'').to_string();
-                        statements.push(ASTNode::UseLib(lib_val));
+                        let lib_path = t.value.trim_matches('"').trim_matches('\'').to_string();
+                        
+                        match std::fs::read_to_string(&lib_path) {
+                            Ok(lib_source) => {
+                                let sub_tokens = crate::lexer::tokenize(&lib_source);
+                                let sub_nodes = parse(&sub_tokens);
+                                statements.extend(sub_nodes);
+                            }
+                            Err(err) => {
+                                eprintln!("[ERROR] Cannot read library '{lib_path}': {err}");
+                            }
+                        }
                     }
                 }
             }
@@ -152,6 +168,27 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                     if let Some(content) = parse_braces_block(&mut iter) {
                         let inc_val = content.trim_matches('"').trim_matches('\'').to_string();
                         statements.push(ASTNode::IncludeInc(inc_val));
+                    }
+                } else if token.value == "@target" {
+                    if let Some(next_t) = iter.peek() {
+                        if next_t.kind == TokenKind::ASSIGN {
+                            iter.next();
+                        }
+                    }
+                    let target_name = match iter.next() {
+                        Some(t) if t.kind == TokenKind::STRING => {
+                            t.value.trim_matches('"').trim_matches('\'').to_string()
+                        }
+                        Some(t) if t.kind == TokenKind::IDENT => t.value.clone(),
+                        _ => String::new(),
+                    };
+                    if let Some(block_content) = parse_braces_block(&mut iter) {
+                        let sub_tokens = crate::lexer::tokenize(&block_content);
+                        let sub_nodes = parse(&sub_tokens);
+                        statements.push(ASTNode::TargetBlock{
+                            target: target_name,
+                            nodes: sub_nodes,
+                        });
                     }
                 }
             }

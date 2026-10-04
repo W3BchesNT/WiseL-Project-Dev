@@ -1,0 +1,37 @@
+@data {
+    WVAR hStdOut, i64, ?
+    WVAR bytesWritten, i32, ?
+}
+
+@include.inc {
+    "win64w.inc"
+}
+
+@library kernel32 {
+    GetStdHandle
+    WriteConsoleA
+    ExitProcess
+}
+
+fn GetStdHandle() {
+    asm {
+        invoke GetStdHandle, -11
+        WSTORE hStdOut, t0_64
+    }
+}
+
+fn Exit() {
+    asm {
+        invoke ExitProcess, 0
+    }
+}
+
+fn WindowsShadowSpace() {
+    asm {
+        pop rax
+        sub rsp, 8
+        and rsp, -16
+        sub rsp, 40
+        push rax
+    }
+}

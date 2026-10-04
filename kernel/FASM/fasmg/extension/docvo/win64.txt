@@ -1,6 +1,6 @@
 include 'extension/format.inc'
 include 'extension/wir_ll.inc'
-set_build X64, Windows, Console
+set_build ARM64, Windows, Console
 
 entry start
 

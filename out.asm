@@ -1,32 +1,25 @@
 include 'kernel/FASM/fasmg/extension/format.inc'
 include 'kernel/FASM/fasmg/extension/wir_ll.inc'
 
-set_build X64, Windows, Console
-
+set_build X64, Linux, Console
 entry start
 
-include 'win64w.inc'
-
 data_block
-    hStdOut dq ?
-    bytesWritten dd ?
-    str_hello db 'Hello, World!' , 13 , 10 , 0
-    hello_len = $ - str_hello - 1
+    LINUX_WSTR str_hello , 'Hello, World My!' , 13 , 10
 
 code_block
 
+fn_Exit:
+    mov rax , 60
+    xor rdi , rdi
+    syscall
+    ret
+
 start:
+    mov rax , 1
+    mov rdi , 1
+    lea rsi , [ str_hello ]
+    mov rdx , str_hello_len
+    syscall
+    call fn_Exit
 
-    sys_prolog
-    invoke GetStdHandle , -11
-    sys_store hStdOut , t0_64
-    sys_load t0_64 , hStdOut
-    invoke WriteConsoleA , t0_64 , str_hello , hello_len , bytesWritten , 0
-    invoke ExitProcess , 0
-
-import_block
-    library kernel32, 'KERNEL32.DLL'
-    import kernel32, \
-           GetStdHandle, 'GetStdHandle', \
-           WriteConsoleA, 'WriteConsoleA', \
-           ExitProcess, 'ExitProcess'

@@ -1,30 +1,17 @@
+Target "Linux"
+UseLib "library/stdlib.wlib"
+
 @data {
-    hStdOut        dq ?
-    bytesWritten   dd ?
-    str_hello      db 'Hello, World!', 13, 10, 0
-    hello_len      =  $ - str_hello - 1
-}
-
-@include.inc {
-    "win64w.inc"
-}
-
-@library kernel32{
-    GetStdHandle
-    WriteConsoleA
-    ExitProcess
+    LINUX_WSTR str_hello, 'Hello, World!', 13, 10
 }
 
 fn main() {
     asm {
-        sys_prolog
-
-        invoke GetStdHandle, -11
-        sys_store hStdOut, t0_64
-
-        sys_load t0_64, hStdOut
-        invoke WriteConsoleA, t0_64, str_hello, hello_len, bytesWritten, 0
-
-        invoke ExitProcess, 0
+        mov rax, 1
+        mov rdi, 1
+        lea rsi, [str_hello]
+        mov rdx, str_hello_len
+        syscall
     }
+    Exit()
 }

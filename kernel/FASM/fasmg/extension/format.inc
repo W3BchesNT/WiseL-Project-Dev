@@ -6,6 +6,8 @@ macro set_build? arch*, os*, type*
         ELF.Settings.Class = 2
         ELF.Settings.Type = ET_DYN
         ELF.Settings.LoadHeaders = 1
+        NUMBER_OF_SEGMENTS = 2     ; <--- ДОБАВЬ ЭТУ СТРОЧКУ ЗДЕСЬ
+        
         match =ARM64, arch
             ELF.Settings.Machine = EM_AARCH64
             include '../../aarch64/iset/aarch64.inc'
@@ -38,7 +40,6 @@ macro set_build? arch*, os*, type*
             format PE64 GUI
         end match
         include 'macro/import64.inc'
-        ; Убран дубликат proc64.inc, так как используется win64w.inc в out.asm
         define t0_64 rax
         define t0_32 eax
         define t1_64 rcx
