@@ -1,17 +1,23 @@
 Target "Linux"
 UseLib "library/stdlib.wlib"
 
-@data {
-    LINUX_WSTR str_hello, 'Hello, World!', 13, 10
+let str_hi: str = "Hello, World!"
+let str_hru: str = "How are you?"
+let str_new: str = "What are you doing?"
+
+fn syscall(a: any, b: any, c: any) {
+    asm {
+        mov rax, {a}
+        mov rdi, {b}
+        lea rsi, [{c}]
+        mov rdx, {c}_len
+        syscall
+    }
 }
 
 fn main() {
-    asm {
-        mov rax, 1
-        mov rdi, 1
-        lea rsi, [str_hello]
-        mov rdx, str_hello_len
-        syscall
-    }
-    Exit()
+    syscall(1, 1, str_hi)
+    syscall(1, 1, str_hru)
+    syscall(1, 1, str_new)
+    exit()
 }

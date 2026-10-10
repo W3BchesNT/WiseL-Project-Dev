@@ -6,7 +6,7 @@ macro set_build? arch*, os*, type*
         ELF.Settings.Class = 2
         ELF.Settings.Type = ET_DYN
         ELF.Settings.LoadHeaders = 1
-        NUMBER_OF_SEGMENTS = 2     ; <--- ДОБАВЬ ЭТУ СТРОЧКУ ЗДЕСЬ
+        NUMBER_OF_SEGMENTS = 2
         
         match =ARM64, arch
             ELF.Settings.Machine = EM_AARCH64

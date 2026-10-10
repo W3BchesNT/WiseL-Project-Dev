@@ -2,6 +2,7 @@ mod codegen;
 mod input;
 mod lexer;
 mod parser;
+mod parser_helpers;
 
 // "use kawaii::*;"
 use codegen::*;

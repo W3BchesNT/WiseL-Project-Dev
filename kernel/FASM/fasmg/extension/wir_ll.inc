@@ -81,12 +81,35 @@ macro WVAR? name*, type*, val=?
     end match
 end macro
 
-macro LINUX_WSTR? name, values&
+macro WSTR? name, values&
     name db values
+end macro
+
+macro WSTR_LEN? name*, modifier&
+    name#_len = $ - name modifier
+end macro
+
+macro LINUX_WSTR_LEN? name
     name#_len = $ - name
 end macro
 
-macro WSTR? name, values&
-    name db values
+macro WINDOWS_WSTR_LEN? name
     name#_len = $ - name - 1
+end macro
+
+macro WLEA? dest*, src_addr*
+    match =ARM64, CURRENT_ARCH
+        adrp    x16, src_addr
+        add     dest, x16, :lo12:src_addr
+    else
+        lea     dest, [src_addr]
+    end match
+end macro
+
+macro WSYSCALL?
+    match =ARM64, CURRENT_ARCH
+        svc     0
+    else
+        syscall
+    end match
 end macro

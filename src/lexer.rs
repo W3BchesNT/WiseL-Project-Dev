@@ -1,5 +1,5 @@
-use std::iter::Peekable;
-use std::str::CharIndices;
+//use std::iter::Peekable;
+//use std::str::CharIndices;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TokenKind {
@@ -35,8 +35,7 @@ pub struct Token {
 // Map keyword string to token type
 fn get_keyword_type(word: &str) -> TokenKind {
     match word {
-        "func"   => TokenKind::FUNC,
-        "fn"     => TokenKind::FUNC,
+        "func" | "fn"   => TokenKind::FUNC,
         "if"     => TokenKind::IF,
         "else"   => TokenKind::ELSE,
         "while"  => TokenKind::WHILE,

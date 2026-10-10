@@ -1,4 +1,4 @@
-fn Exit() {
+fn exit() {
     asm {
         mov rax, 60
         xor rdi, rdi
