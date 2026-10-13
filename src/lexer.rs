@@ -107,21 +107,18 @@ pub fn tokenize(source: &str) -> Vec<Token> {
         }
 
         // Handle double-character operators
-        if ch == '-' && chars.peek() == Some(&(i + 1, '>')) {
-            chars.next();
-            tokens.push(Token { kind: TokenKind::ARROW, value: String::from("->") });
-            continue;
-        }
-        if ch == '=' && chars.peek() == Some(&(i + 1, '=')) {
-            chars.next();
-            tokens.push(Token { kind: TokenKind::EQ, value: String::from("==") });
-            continue;
-        }
-        if ch == '+' && chars.peek() == Some(&(i + 1, '+')) {
-            chars.next();
-            tokens.push(Token { kind: TokenKind::PLUSPLUS, value: String::from("++") });
-            continue;
-        }
+        let mut check_double_op = |first_ch, second_ch, kind, value: &str| -> bool {
+            if ch == first_ch && chars.peek().is_some_and(|&(_, c)| c == second_ch) {
+                chars.next();
+                tokens.push(Token { kind, value: String::from(value) });
+                return true;
+            }
+            false
+        };
+
+        if check_double_op('-','>', TokenKind::ARROW, "->") { continue }
+        if check_double_op('=','=', TokenKind::EQ, "==") { continue }
+        if check_double_op('+','+', TokenKind::PLUSPLUS, "++") { continue }
 
         // Handle directives starting with '@'
         if ch == '@' {

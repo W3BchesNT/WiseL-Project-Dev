@@ -67,29 +67,27 @@ fn parse_braces_block(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>
     let mut depth = 1;
 
     while let Some(inner) = iter.next() {
-        if inner.kind == TokenKind::LBRACE {
-            depth += 1;
-            content.push_str(&inner.value);
-        } else if inner.kind == TokenKind::RBRACE {
-            depth -= 1;
-            if depth == 0 {
-                break;
+        match inner.kind {
+            TokenKind::LBRACE => {
+                depth += 1;
+                content.push_str(&inner.value);
             }
-            content.push_str(&inner.value);
-        } else if inner.kind == TokenKind::NEWLINE {
-            content.push('\n');
-        } else if inner.kind == TokenKind::LPAREN {
-            content.push('(');
-        } else if inner.kind == TokenKind::RPAREN {
-            content.push(')');
-        } else if inner.kind == TokenKind::COMMA {
-            content.push(',');
-        } else {
-            content.push_str(&inner.value);
-            content.push(' ');
+            TokenKind::RBRACE => {
+                depth -= 1;
+                if depth == 0 { break; }
+                content.push_str(&inner.value);
+            }
+            TokenKind::NEWLINE => content.push('\n'),
+            TokenKind::LPAREN => content.push('('),
+            TokenKind::RPAREN => content.push(')'),
+            TokenKind::COMMA => content.push(','),
+
+            _ => {
+                content.push_str(&inner.value);
+                content.push(' ');
+            }
         }
     }
-
     Some(content.trim().to_string())
 }
 

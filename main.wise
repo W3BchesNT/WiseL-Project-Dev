@@ -4,6 +4,18 @@ UseLib "library/stdlib.wlib"
 let str_hi: str = "Hello, World!"
 let str_hru: str = "How are you?"
 let str_new: str = "What are you doing?"
+let str_by: str = "Bye, World!"
+
+let stock: i32 = 10
+
+fn sys_write(c: any) {
+    let a: i32 = 1
+    asm {
+        lea rsi, [{c}]
+        mov rdx, {c}_len
+        syscall
+    }
+}
 
 fn syscall(a: any, b: any, c: any) {
     asm {
@@ -19,5 +31,6 @@ fn main() {
     syscall(1, 1, str_hi)
     syscall(1, 1, str_hru)
     syscall(1, 1, str_new)
+    sys_write(str_by)
     exit()
 }

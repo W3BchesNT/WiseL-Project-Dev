@@ -1,4 +1,5 @@
 use crate::parser::{ASTNode, Expr};
+use std::collections::HashMap;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -37,13 +38,31 @@ fn find_inline_func<'a>(name: &str, inline_funcs: &'a [(String, Vec<(String, Str
     inline_funcs.iter().find(|(n, _, _)| n == name)
 }
 
-fn emit_arg_to_reg(asm: &mut String, reg: &str, arg: &Expr) {
+fn emit_arg_to_reg(
+    asm: &mut String,
+    target_reg: &str,
+    arg: &Expr,
+    local_vars: &HashMap<String, usize>,
+) {
     match arg {
-        Expr::Number(n) => asm.push_str(&format!("    mov {}, {}\n", reg, n)),
-        Expr::Ident(s) => asm.push_str(&format!("    lea {}, [{}]\n", reg, s)),
-        Expr::String(s) => asm.push_str(&format!("    mov {}, '{}'\n", reg, s)),
+        Expr::Number(n) => asm.push_str(&format!("    mov {}, {}\n", target_reg, n)),
+        Expr::String(s) => asm.push_str(&format!("    mov {}, '{}'\n", target_reg, s)),
+        Expr::Ident(s) => {
+            if let Some(&offset) = local_vars.get(s) {
+                let reg_64 = match target_reg {
+                    "eax" | "rax" => "rax", "edi" | "rdi" => "rdi",
+                    "esi" | "rsi" => "rsi", "edx" | "rdx" => "rdx",
+                    "ecx" | "rcx" => "rcx", "r8d" | "r8"  => "r8",
+                    "r9d" | "r9"  => "r9",  _ => target_reg,
+                };
+                asm.push_str(&format!("    mov {}, [rsp + {}]\n", reg_64, offset));
+            } else {
+                asm.push_str(&format!("    lea {}, [{}]\n", target_reg, s));
+            }
+        }
     }
 }
+
 
 fn normalize_braces(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
@@ -74,6 +93,10 @@ fn expr_to_asm_val(arg: &Expr) -> String {
     }
 }
 
+fn count_local_vars(stmts: &[crate::parser::Stmt]) -> usize {
+    stmts.iter().filter(|s| matches!(s, crate::parser::Stmt::Let { .. })).count()
+}
+
 // Walk the AST and emit FASM code
 fn push_func_body(
     asm: &mut String,
@@ -82,39 +105,52 @@ fn push_func_body(
     _args: &[Expr],
     inline_funcs: &[(String, Vec<(String, String)>, Vec<crate::parser::Stmt>)],
     user_funcs: &[String],
+    platform: TargetPlatform,
 ) {
+    let mut local_vars: HashMap<String, usize> = HashMap::new();
+    let mut current_var_index = 0;
+
+    let total_vars = count_local_vars(stmts);
+    let stack_size = ((total_vars * 8) + 15) & !15;
+
+    if stack_size > 0 {
+        asm.push_str(&format!("    sub rsp, {}\n", stack_size));
+    }
+
     for stmt in stmts {
         match stmt {
             crate::parser::Stmt::Call { name, args: call_args } => {
-                // Check if this is an inline function
                 if let Some((_, fparams, fbody)) = find_inline_func(name, inline_funcs) {
                     for stmt in fbody {
-                        if let crate::parser::Stmt::Asm(raw) = stmt {
-                            let mut out = normalize_braces(raw);
-                            
-                            for ((pname, _), arg) in fparams.iter().zip(call_args.iter()) {
-                                let val = expr_to_asm_val(arg);
-                                out = out.replace(&format!("{{{}}}", pname), &val);
-                            }
-                            
-                            for line in out.lines() {
-                                let trimmed = line.trim();
-                                if !trimmed.is_empty() {
-                                    asm.push_str(&format!("    {}\n", trimmed));
-                                }
-                            }
+                        if let crate::parser::Stmt::Let { name: let_name, ty, value, .. } = stmt {
+                            let target = if ty == "i32" { "eax" } else { "rax" };
+                            emit_arg_to_reg(asm, target, value, &local_vars);
                         }
+                    }
+                    let mut out = String::new();
+                    for stmt in fbody {
+                        if let crate::parser::Stmt::Asm(raw) = stmt {
+                            out = normalize_braces(raw);
+                        }
+                    }
+                    for ((pname, _), arg) in fparams.iter().zip(call_args.iter()) {
+                        let val = expr_to_asm_val(arg);
+                        out = out.replace(&format!("{{{}}}", pname), &val);
+                    }
+                    for line in out.lines() {
+                        let trimmed = line.trim();
+                        if !trimmed.is_empty() { asm.push_str(&format!("    {}\n", trimmed)); }
                     }
                     continue;
                 }
 
-                // Regular function call
-                let arg_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
+                let arg_regs = match platform {
+                    TargetPlatform::Linux => ["rdi", "rsi", "rdx", "rcx", "r8", "r9"],
+                    TargetPlatform::Windows => ["rcx", "rdx", "r8", "r9", "rax", "rax"],
+                };
                 for (i, a) in call_args.iter().enumerate() {
-                    if i >= arg_regs.len() {
-                        break;
-                    }
-                    emit_arg_to_reg(asm, arg_regs[i], a);
+                    if i >= 6 || (platform == TargetPlatform::Windows && i >= 4) { break; }
+                    emit_arg_to_reg(asm, arg_regs[i], a, &local_vars);
                 }
 
                 if user_funcs.contains(name) {
@@ -123,23 +159,25 @@ fn push_func_body(
                     asm.push_str(&format!("    call {}\n", name));
                 }
             }
-            crate::parser::Stmt::Let { name, ty: _, value, .. } => {
-                emit_arg_to_reg(asm, "rax", value);
-                asm.push_str(&format!("    mov [{}], rax\n", name));
+            crate::parser::Stmt::Let { name, ty, value, .. } => {
+                let offset = current_var_index * 8;
+                local_vars.insert(name.clone(), offset);
+                current_var_index += 1;
+                let target = if ty == "i32" { "eax" } else { "rax" };
+                emit_arg_to_reg(asm, target, value, &local_vars);
+                asm.push_str(&format!("    mov [rsp + {}], rax\n", offset));
             }
             crate::parser::Stmt::Return(value) => {
                 if let Some(v) = value {
-                    emit_arg_to_reg(asm, "rax", v);
+                    emit_arg_to_reg(asm, "rax", v, &local_vars);
                 }
+                if stack_size > 0 { asm.push_str(&format!("    add rsp, {}\n", stack_size)); }
                 asm.push_str("    ret\n");
             }
             crate::parser::Stmt::Asm(raw) => {
-                // Indent EVERY line of the raw asm block
                 for line in raw.lines() {
                     let trimmed = line.trim();
-                    if !trimmed.is_empty() {
-                        asm.push_str(&format!("    {}\n", trimmed));
-                    }
+                    if !trimmed.is_empty() { asm.push_str(&format!("    {}\n", trimmed)); }
                 }
             }
             crate::parser::Stmt::Raw(raw) => {
@@ -147,12 +185,22 @@ fn push_func_body(
             }
         }
     }
+
+    if stmts.last().map_or(true, |last| !matches!(last, crate::parser::Stmt::Return(_))) {
+        if stack_size > 0 { asm.push_str(&format!("    add rsp, {}\n", stack_size)); }
+    }
 }
 
-fn emit_all_funcs(asm: &mut String, ast: &[ASTNode], inline_funcs: &[(String, Vec<(String, String)>, Vec<crate::parser::Stmt>)], user_funcs: &[String]) {
+fn emit_all_funcs(
+    asm: &mut String, 
+    ast: &[ASTNode], 
+    inline_funcs: &[(String, Vec<(String, String)>, Vec<crate::parser::Stmt>)], 
+    user_funcs: &[String],
+    platform: TargetPlatform,
+) {
     for node in ast {
         if let ASTNode::Func { name, body, params } = node {
-            emit_func(asm, name, body, params, inline_funcs, user_funcs);
+            emit_func(asm, name, body, params, inline_funcs, user_funcs, platform);
         }
     }
 }
@@ -181,14 +229,23 @@ fn emit_data(asm: &mut String, ast: &[ASTNode]) {
                 }
                 asm.push('\n');
             }
-            ASTNode::Let { name, ty, value, .. } if ty == "string" || ty == "str" => {
-                if let Expr::String(val) = value {
-                    if !has_data {
-                        asm.push_str("data_block\n");
-                        has_data = true;
+            ASTNode::Let { name, ty, value, .. } => {
+                if !has_data {
+                    asm.push_str("data_block\n");
+                    has_data = true;
+                }
+                match (ty.as_str(), value) {
+                    ("string" | "str", Expr::String(val)) => {
+                        asm.push_str(&format!("    WSTR {} , '{}' , 13 , 10\n", name, val));
+                        asm.push_str(&format!("    WSTR_LEN {}\n", name));
                     }
-                    asm.push_str(&format!("    WSTR {} , '{}' , 13 , 10\n", name, val));
-                    asm.push_str(&format!("    WSTR_LEN {}\n", name));
+                    ("i32", Expr::Number(n)) => {
+                        asm.push_str(&format!("    {} dd {}\n", name, n));
+                    }
+                    ("i64" | "any", Expr::Number(n)) => {
+                        asm.push_str(&format!("    {} dq {}\n", name, n));
+                    }
+                    _ => {}
                 }
             }
             _ => {}
@@ -200,12 +257,20 @@ fn emit_data(asm: &mut String, ast: &[ASTNode]) {
 }
 
 // Emit function with proper signature
-fn emit_func(asm: &mut String, name: &str, body: &[crate::parser::Stmt], params: &[(String, String)], inline_funcs: &[(String, Vec<(String, String)>, Vec<crate::parser::Stmt>)], user_funcs: &[String]) {
+fn emit_func(
+    asm: &mut String, 
+    name: &str, 
+    body: &[crate::parser::Stmt], 
+    params: &[(String, String)], 
+    inline_funcs: &[(String, Vec<(String, String)>, Vec<crate::parser::Stmt>)], 
+    user_funcs: &[String],
+    platform: TargetPlatform,
+) {
     match name {
-        "main" => push_func_body(asm, body, params, &[], inline_funcs, user_funcs),
+        "main" => push_func_body(asm, body, params, &[], inline_funcs, user_funcs, platform),
         _ if !is_inline_func(name, inline_funcs) => {
             asm.push_str(&format!("fn_{}:\n", name));
-            push_func_body(asm, body, params, &[], inline_funcs, user_funcs);
+            push_func_body(asm, body, params, &[], inline_funcs, user_funcs, platform);
             asm.push_str("    ret\n\n");
         }
         _ => {}
@@ -258,12 +323,12 @@ pub fn generate(raw_ast: &[ASTNode]) -> String {
 
             emit_includes(&mut asm, &ast);
 
-            emit_all_funcs(&mut asm, &ast, &inline_funcs, &user_funcs);
+            emit_all_funcs(&mut asm, &ast, &inline_funcs, &user_funcs, target);
 
             asm.push_str("code_block\n");
             asm.push_str("start:\n");
             asm.push_str("    entry start\n");
-            emit_all_funcs(&mut asm, &ast, &inline_funcs, &user_funcs);
+            emit_all_funcs(&mut asm, &ast, &inline_funcs, &user_funcs, target);
             asm.push('\n');
 
             emit_data(&mut asm, &ast);
@@ -310,7 +375,7 @@ pub fn generate(raw_ast: &[ASTNode]) -> String {
 
             asm.push_str("code_block\n\n");
             asm.push_str("start:\n");
-            emit_all_funcs(&mut asm, &ast, &inline_funcs, &user_funcs);
+            emit_all_funcs(&mut asm, &ast, &inline_funcs, &user_funcs, target);
             asm.push('\n');
         }
     }
