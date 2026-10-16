@@ -1,230 +1,273 @@
-//use std::iter::Peekable;
-//use std::str::CharIndices;
+use std::iter::Peekable;
+use std::str::CharIndices;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum TokenKind {
+#[derive(Clone, Debug, PartialEq)]
+pub enum Token {
     // === 1. Literals & Identifiers (Data) ===
-    IDENT, NUMBER, STRING, FORMAT,
+    Identifier(String), Bool(bool), StringLiteral(String),
+    // BTW I named this as "WholeNumber" instead of "Integer"
+    // since we don't detect negative numbers here. We emit a negative sign and a number,
+    // then the parser handles the negative numbers
+    WholeNumber(String), FloatNumber(String),
 
     // === 2. Keywords: Declarations & Modifiers ===
-    LET, MUT, STATIC, FUNC,
+    Let, Mut, Static, Func,
 
     // === 3. Keywords: Control Flow === 
-    IF, ELSE, WHILE, BREAK, RETURN,
+    If, Else, While, Break, Return, Switch, Case, Match,
 
     // === 4. Operators ===
-    ASSIGN, EQ, PLUSPLUS, DIV, MOD, DOT, ARROW,
+    Assign, Div, Mod, Dot, Arrow, Plus, Minus, Star, Exponent, PlusPlus, MinusMinus,
+    Eq, InEq, GreaterThan, LessThan, GreaterThanOrEq, LessThanOrEq, Not,
+    PlusAssign, MinusAssign, StarAssign, DivAssign, ExponentAssign, ModAssign,
 
     // === 5. Brackets & Delimiters ===
-    LPAREN, RPAREN, LBRACE, RBRACE, LBRACKET, RBRACKET,
+    LParen, RParen, LBrace, RBrace, LBracket, RBracket,
 
     // === 6. Punctuation ===
-    COLON, COMMA, NEWLINE,
+    Colon, Comma, Newline, Semicolon,
 
     // === 7. System & Directives ===
-    USELIB, ASM, DIRECTIVE,
-    END
+    UseLib, ASM, Format, Directive(String),
+
+    End,
 }
 
-#[derive(Clone, Debug)]
-pub struct Token {
-    pub kind: TokenKind,
-    pub value: String,
-}
+fn identify_char_sequence(word: String) -> Token {
+    match word.as_str() {
+        "true"   => Token::Bool(true),
+        "false"  => Token::Bool(false),
 
-// Map keyword string to token type
-fn get_keyword_type(word: &str) -> TokenKind {
-    match word {
-        "func" | "fn"   => TokenKind::FUNC,
-        "if"     => TokenKind::IF,
-        "else"   => TokenKind::ELSE,
-        "while"  => TokenKind::WHILE,
-        "break"  => TokenKind::BREAK,
-        "let"    => TokenKind::LET,
-        "mut"    => TokenKind::MUT,
-        "asm"    => TokenKind::ASM,
-        "static" => TokenKind::STATIC,
-        "return" => TokenKind::RETURN,
-        "Format" => TokenKind::FORMAT,
-        "UseLib" => TokenKind::USELIB,
-        _        => TokenKind::IDENT,
+        "let"    => Token::Let,
+        "mut"    => Token::Mut,
+        "static" => Token::Static,
+        "fn" | "fun" | "func" | "function"
+                 => Token::Func,
+
+        "if"     => Token::If,
+        "else"   => Token::Else,
+        "while"  => Token::While,
+        "break"  => Token::Break,
+        "return" => Token::Return,
+        "switch" => Token::Switch,
+        "case"   => Token::Case,
+        "match"  => Token::Match,
+
+        "asm"    => Token::ASM,
+        "UseLib" => Token::UseLib,
+        "Format" => Token::Format,
+
+        _        => Token::Identifier(word),
     }
 }
 
-// Convert source code string into token vector using iterators
+// Identifies '+', '--', '**', '/=', '**=', '->', etc.
+fn identify_double_operator(chars: &mut Peekable<CharIndices>, current_char: char) -> Token {
+    let peeked_char: char = chars
+        .peek()
+        .map(|&(_, actual_char)| actual_char)
+        // A placeholder
+        .unwrap_or('\0');
+
+    match (current_char, peeked_char) {
+        // Let both '->' and '=>' indicate an arrow
+        ('-', '>') |
+        ('=', '>') => { chars.next(); Token::Arrow },
+
+        // Comparison
+        ('=', '=') => { chars.next(); Token::Eq },
+        ('!', '=') => { chars.next(); Token::InEq },
+        ('>', '=') => { chars.next(); Token::GreaterThanOrEq },
+        ('<', '=') => { chars.next(); Token::LessThanOrEq },
+        ('>', _) => Token::GreaterThan,
+        ('<', _) => Token::LessThan,
+
+        // Mathematical operators
+        ('=', _)   => Token::Assign,
+        ('!', _)   => Token::Not,
+        ('+', '+') => { chars.next(); Token::PlusPlus },
+        ('+', '=') => { chars.next(); Token::PlusAssign },
+        ('+', _)   => Token::Plus,
+        ('-', '-') => { chars.next(); Token::MinusMinus },
+        ('-', '=') => { chars.next(); Token::MinusAssign },
+        ('-', _)   => Token::Minus,
+        // Can represent '**=', so it's a complex case
+        ('*', '*') => {
+            chars.next();
+            if let Some((_, '=')) = chars.peek() {
+                chars.next();
+                return Token::ExponentAssign;
+            }
+
+            Token::Exponent
+        },
+        ('*', '=') => { chars.next(); Token::StarAssign },
+        // No C-styled pointers, I guess?
+        ('*', _)   => Token::Star,
+        ('/', '=') => { chars.next(); Token::DivAssign },
+        ('/', _)   => Token::Div,
+        ('%', '=') => { chars.next(); Token::ModAssign },
+        ('%', _)   => Token::Mod,
+
+        _ => unreachable!(
+            "Invalid mathematical operator: {}",
+            String::from_iter([current_char, peeked_char]),
+        ),
+    }
+}
+
+// Convert the source code string into a token vector using iterators
 pub fn tokenize(source: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut chars = source.char_indices().peekable();
 
-    while let Some((i, ch)) = chars.next() {
-        // Skip horizontal whitespaces and carriage returns
-        if ch == ' ' || ch == '\t' || ch == '\r' {
-            continue;
-        }
+    while let Some((_, ch)) = chars.next() {
+        match ch {
+            // Skip horizontal whitespaces and carriage returns
+            ' ' | '\t' | '\r' => { continue },
 
-        // Handle newlines as statement terminators
-        if ch == '\n' {
-            tokens.push(Token {
-                kind: TokenKind::NEWLINE,
-                value: String::from("\n"),
-            });
-            continue;
-        }
+            // Handle newlines and semicolons as statement terminators
+            '\n' => { tokens.push(Token::Newline) },
+            ';'  => { tokens.push(Token::Semicolon) },
 
-        // Handle single-line comments starting with '//'
-        if ch == '/' {
-            if let Some(&(_, '/')) = chars.peek() {
-                while let Some(&(_, c)) = chars.peek() {
-                    if c == '\n' {
-                        break;
-                    }
+            // Handle both single-line and multi-line comments
+            '/' => match chars.peek() {
+                Some((_, '/')) => {
+                    // Consume the second slash
                     chars.next();
-                }
-                continue;
-            }
-        }
-
-        // Handle negative numbers (e.g., -123 or -42h)
-        if ch == '-' {
-            if let Some(&(_, next_ch)) = chars.peek() {
-                if next_ch.is_ascii_digit() {
-                    let mut num = String::from("-");
-                    while let Some(&(_, c)) = chars.peek() {
-                        if c.is_ascii_digit() || c == 'h' || c == 'H' {
-                            num.push(c);
-                            chars.next();
-                        } else {
+                    while let Some((_, next_char)) = chars.next() {
+                        if next_char == '\n' {
+                            tokens.push(Token::Newline);
                             break;
                         }
                     }
-                    tokens.push(Token {
-                        kind: TokenKind::NUMBER,
-                        value: num,
-                    });
-                    continue;
-                }
-            }
-        }
-
-        // Handle double-character operators
-        let mut check_double_op = |first_ch, second_ch, kind, value: &str| -> bool {
-            if ch == first_ch && chars.peek().is_some_and(|&(_, c)| c == second_ch) {
-                chars.next();
-                tokens.push(Token { kind, value: String::from(value) });
-                return true;
-            }
-            false
-        };
-
-        if check_double_op('-','>', TokenKind::ARROW, "->") { continue }
-        if check_double_op('=','=', TokenKind::EQ, "==") { continue }
-        if check_double_op('+','+', TokenKind::PLUSPLUS, "++") { continue }
-
-        // Handle directives starting with '@'
-        if ch == '@' {
-            let mut word = String::from("@");
-            while let Some(&(_, c)) = chars.peek() {
-                if c.is_alphanumeric() || c == '_' || c == '.' {
-                    word.push(c);
+                },
+                Some((_, '*')) => {
+                    // Consume '*', so the loop won't accept '/*/' as a valid comment ('/**/' is valid)
                     chars.next();
-                } else {
-                    break;
-                }
-            }
-            tokens.push(Token {
-                kind: TokenKind::DIRECTIVE,
-                value: word,
-            });
-            continue;
-        }
+                    // Loop until '*/'
+                    while let Some((_, next_char)) = chars.next() {
+                        if next_char != '*' { continue }
+                        if let Some((_, '/')) = chars.peek() { chars.next(); break }
+                    }
+                },
+                _ => {
+                    /* Regex maybe? https://crates.io/crates/regex */
 
-        // Handle string literals enclosed in quotes ("..." or '...')
-        if ch == '"' || ch == '\'' {
-            let quote = ch;
-            let mut s = String::from(quote);
-            let mut escaped = false;
-            while let Some(&(_, c)) = chars.peek() {
-                chars.next();
-                s.push(c);
-                if escaped {
-                    escaped = false;
-                    continue;
-                }
-                if c == '\\' {
-                    escaped = true;
-                } else if c == quote {
-                    break;
-                }
-            }
-            tokens.push(Token {
-                kind: TokenKind::STRING,
-                value: s,
-            });
-            continue;
-        }
+                    // Operators '/', '/='
+                    tokens.push(identify_double_operator(&mut chars, ch));
+                },
+            },
 
-        // Handle numeric literals (with optional hex suffix h/H)
-        if ch.is_ascii_digit() {
-            let mut num = String::from(ch);
-            while let Some(&(_, c)) = chars.peek() {
-                if c.is_ascii_digit() || c == 'h' || c == 'H' {
-                    num.push(c);
+            '+' | '-' | '*' | '%' |
+            '=' | '!' |
+            '>' | '<' => { tokens.push(identify_double_operator(&mut chars, ch)); },
+
+            // Handle directives starting with a '@' symbol
+            '@' => {
+                let mut directive_value = String::from(ch);
+                while let Some(&(_, peeked_char)) = chars.peek() {
+                    if !peeked_char.is_alphanumeric() && peeked_char != '_' && peeked_char != '.' { break }
+
                     chars.next();
-                } else {
-                    break;
+                    directive_value.push(peeked_char);
                 }
-            }
-            tokens.push(Token {
-                kind: TokenKind::NUMBER,
-                value: num,
-            });
-            continue;
-        }
+                tokens.push(Token::Directive(directive_value));
+            },
 
-        // Handle identifiers and keywords
-        if ch.is_ascii_alphabetic() || ch == '_' {
-            let mut word = String::from(ch);
-            while let Some(&(_, c)) = chars.peek() {
-                if c.is_ascii_alphanumeric() || c == '_' {
-                    word.push(c);
+            // Handle string literals enclosed in quotes ("...", '...', `...`)
+            '"' | '\'' | '`' => {
+                let literal_quote: char = ch;
+                let mut is_escaped: bool = false;
+                let mut string_literal = String::new();
+                while let Some((_, next_char)) = chars.next() {
+                    if is_escaped { is_escaped = false }
+                    else if next_char == '\\' { is_escaped = true }
+                    // Do not save a literal quote into the string literal
+                    else if next_char == literal_quote { break }
+                    string_literal.push(next_char);
+                }
+                tokens.push(Token::StringLiteral(string_literal));
+            },
+
+            // Handle number literals (with an optional hex suffix 'h'/'H')
+            number_char if number_char.is_ascii_digit() => {
+                let mut has_dot: bool = false;
+                let mut number_literal = String::from(number_char);
+                while let Some(&(_, peeked_char)) = chars.peek() {
+                    match peeked_char {
+                        'H' |
+                        'h' => {
+                            chars.next();
+                            number_literal.push(peeked_char);
+                            break;
+                        },
+
+                        '.' => {
+                            if has_dot { break } else {
+                                chars.next();
+                                number_literal.push(peeked_char);
+                                has_dot = true;
+                            }
+                        },
+
+                        // Handle both HEX and base 10 digits. If the HEX digits are present,
+                        // but the number lacks a 'h' symbol, the token will still be emitted,
+                        // so the parser should handle the rest that is going to happen
+                        digit if digit.is_ascii_hexdigit() => {
+                            chars.next();
+                            number_literal.push(digit);
+                        },
+
+                        _ => { break },
+                    }
+                }
+                tokens.push(
+                    if has_dot { Token::FloatNumber(number_literal) }
+                    else { Token::WholeNumber(number_literal) }
+                );
+            }
+
+            // Handle single-character delimiters and punctuation
+            '(' => { tokens.push(Token::LParen) },
+            ')' => { tokens.push(Token::RParen) },
+            '{' => { tokens.push(Token::LBrace) },
+            '}' => { tokens.push(Token::RBrace) },
+            '[' => { tokens.push(Token::LBracket) },
+            ']' => { tokens.push(Token::RBracket) },
+            ',' => { tokens.push(Token::Comma) },
+            '.' => { tokens.push(Token::Dot) },
+            ':' => { tokens.push(Token::Colon) },
+
+            // Handle identifiers and keywords
+            identifier_char if
+                identifier_char.is_ascii_alphabetic() ||
+                identifier_char == '_' ||
+                identifier_char == '$'
+            => {
+                let mut identifier_literal = String::from(ch);
+                while let Some(&(_, peeked_char)) = chars.peek() {
+                    // Identifiers must always start with an alphabetic symbol,
+                    // but they may contain numbers, '_', or '$', like in JavaScript
+                    if !peeked_char.is_ascii_alphanumeric() && peeked_char != '_' && peeked_char != '$' { break }
                     chars.next();
-                } else {
-                    break;
+                    identifier_literal.push(peeked_char);
                 }
-            }
-            let kind = get_keyword_type(&word);
-            tokens.push(Token { kind, value: word });
-            continue;
+                tokens.push(identify_char_sequence(identifier_literal));
+            },
+
+            _ => {
+                /*
+                 * Ignore or not to ignore?
+                 * Characters inside strings and comments are already handled
+                 */
+                unreachable!("Found an invalid character while tokenizing: {}", String::from(ch));
+            },
         }
-
-        // Handle single-character delimiters, punctuation, and fallback operators
-        let (kind, val) = match ch {
-            '(' => (TokenKind::LPAREN, "("),
-            ')' => (TokenKind::RPAREN, ")"),
-            '{' => (TokenKind::LBRACE, "{"),
-            '}' => (TokenKind::RBRACE, "}"),
-            '[' => (TokenKind::LBRACKET, "["),
-            ']' => (TokenKind::RBRACKET, "]"),
-            ',' => (TokenKind::COMMA, ","),
-            '=' => (TokenKind::ASSIGN, "="),
-            '/' => (TokenKind::DIV, "/"),
-            '%' => (TokenKind::MOD, "%"),
-            '.' => (TokenKind::DOT, "."),
-            ':' => (TokenKind::COLON, ":"),
-            _   => (TokenKind::IDENT, &source[i..i + ch.len_utf8()]),
-        };
-
-        tokens.push(Token {
-            kind,
-            value: val.to_string(),
-        });
     }
 
-    // Append end marker token
-    tokens.push(Token {
-        kind: TokenKind::END,
-        value: String::new(),
-    });
+    // Append the end marker token
+    tokens.push(Token::End);
 
     tokens
 }
