@@ -1,6 +1,13 @@
 use std::iter::Peekable;
 use std::str::CharIndices;
 
+use crate::lexer_helpers::{
+    skip_single_line_comment,
+    skip_multi_line_comments,
+    handle_string_literals,
+    handle_brace_blocks,
+};
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     // === 1. Literals & Identifiers (Data) ===
@@ -28,13 +35,17 @@ pub enum Token {
     Colon, Comma, Newline, Semicolon,
 
     // === 7. System & Directives ===
-    UseLib, ASM, Format, Directive(String),
+    // Directive has two 'String' fields:
+    // (1) Kind (@data, @library, etc.)
+    // (2) Data
+    UseLib, ASM(String), Format, Directive(String), RawDirective(String, String),
 
     End,
 }
 
-fn identify_char_sequence(word: String) -> Token {
-    match word.as_str() {
+// Identifies a reserved word
+fn identify_char_sequence(word: &str) -> Token {
+    match word {
         "true"   => Token::Bool(true),
         "false"  => Token::Bool(false),
 
@@ -53,11 +64,11 @@ fn identify_char_sequence(word: String) -> Token {
         "case"   => Token::Case,
         "match"  => Token::Match,
 
-        "asm"    => Token::ASM,
+        "asm"    => Token::ASM("".to_string()),
         "UseLib" => Token::UseLib,
         "Format" => Token::Format,
 
-        _        => Token::Identifier(word),
+        _        => Token::Identifier(word.to_string()),
     }
 }
 
@@ -116,7 +127,7 @@ fn identify_double_operator(chars: &mut Peekable<CharIndices>, current_char: cha
     }
 }
 
-// Convert the source code string into a token vector using iterators
+// Converts the source code string into a token vector using iterators
 pub fn tokenize(source: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut chars = source.char_indices().peekable();
@@ -132,26 +143,9 @@ pub fn tokenize(source: &str) -> Vec<Token> {
 
             // Handle both single-line and multi-line comments
             '/' => match chars.peek() {
-                Some((_, '/')) => {
-                    // Consume the second slash
-                    chars.next();
-                    while let Some((_, next_char)) = chars.next() {
-                        if next_char == '\n' {
-                            tokens.push(Token::Newline);
-                            break;
-                        }
-                    }
-                },
-                Some((_, '*')) => {
-                    // Consume '*', so the loop won't accept '/*/' as a valid comment ('/**/' is valid)
-                    chars.next();
-                    // Loop until '*/'
-                    while let Some((_, next_char)) = chars.next() {
-                        if next_char != '*' { continue }
-                        if let Some((_, '/')) = chars.peek() { chars.next(); break }
-                    }
-                },
-                _ => {
+                Some((_, '/')) => { skip_single_line_comment(&mut chars); },
+                Some((_, '*')) => { skip_multi_line_comments(&mut chars); },
+                _              => {
                     /* Regex maybe? https://crates.io/crates/regex */
 
                     // Operators '/', '/='
@@ -172,23 +166,17 @@ pub fn tokenize(source: &str) -> Vec<Token> {
                     chars.next();
                     directive_value.push(peeked_char);
                 }
-                tokens.push(Token::Directive(directive_value));
+                // Directives like '@data' require raw source.
+                // Other directives should just use emitted tokens
+                let directive_token: Token = match directive_value.as_str() {
+                    "@data" => { Token::RawDirective(directive_value, handle_brace_blocks(&mut chars)) },
+                    _       => { Token::Directive(directive_value) },
+                };
+                tokens.push(directive_token);
             },
 
             // Handle string literals enclosed in quotes ("...", '...', `...`)
-            '"' | '\'' | '`' => {
-                let literal_quote: char = ch;
-                let mut is_escaped: bool = false;
-                let mut string_literal = String::new();
-                while let Some((_, next_char)) = chars.next() {
-                    if is_escaped { is_escaped = false }
-                    else if next_char == '\\' { is_escaped = true }
-                    // Do not save a literal quote into the string literal
-                    else if next_char == literal_quote { break }
-                    string_literal.push(next_char);
-                }
-                tokens.push(Token::StringLiteral(string_literal));
-            },
+            '"' | '\'' | '`' => { tokens.push(handle_string_literals(&mut chars, ch)) },
 
             // Handle number literals (with an optional hex suffix 'h'/'H')
             number_char if number_char.is_ascii_digit() => {
@@ -253,7 +241,14 @@ pub fn tokenize(source: &str) -> Vec<Token> {
                     chars.next();
                     identifier_literal.push(peeked_char);
                 }
-                tokens.push(identify_char_sequence(identifier_literal));
+                let identified_token: Token = identify_char_sequence(&identifier_literal);
+
+                // So, now we can handle ASM (pass a raw assembly block into the token)
+                match identified_token {
+                    // The content of the enum is empty right now
+                    Token::ASM(_) => { tokens.push(Token::ASM(handle_brace_blocks(&mut chars))) },
+                    _             => { tokens.push(identified_token) },
+                }
             },
 
             _ => {
