@@ -45,7 +45,8 @@ fn emit_arg_to_reg(
     local_vars: &HashMap<String, usize>,
 ) {
     match arg {
-        Expr::Number(n) => asm.push_str(&format!("    mov {}, {}\n", target_reg, n)),
+        Expr::FloatNumber(_n) => { /* TODO */ },
+        Expr::IntegerNumber(n) => asm.push_str(&format!("    mov {}, {}\n", target_reg, n)),
         Expr::String(s) => asm.push_str(&format!("    mov {}, '{}'\n", target_reg, s)),
         Expr::Ident(s) => {
             if let Some(&offset) = local_vars.get(s) {
@@ -87,7 +88,8 @@ fn normalize_braces(s: &str) -> String {
 
 fn expr_to_asm_val(arg: &Expr) -> String {
     match arg {
-        Expr::Number(n) => n.to_string(),
+        Expr::FloatNumber(_n) => { "TODO".to_string() /* TODO */ },
+        Expr::IntegerNumber(n) => n.to_string(),
         Expr::Ident(id) => id.clone(),
         Expr::String(s) => format!("'{}'", s),
     }
@@ -239,10 +241,10 @@ fn emit_data(asm: &mut String, ast: &[ASTNode]) {
                         asm.push_str(&format!("    WSTR {} , '{}' , 13 , 10\n", name, val));
                         asm.push_str(&format!("    WSTR_LEN {}\n", name));
                     }
-                    ("i32", Expr::Number(n)) => {
+                    ("i32", Expr::IntegerNumber(n)) => {
                         asm.push_str(&format!("    {} dd {}\n", name, n));
                     }
-                    ("i64" | "any", Expr::Number(n)) => {
+                    ("i64" | "any", Expr::IntegerNumber(n)) => {
                         asm.push_str(&format!("    {} dq {}\n", name, n));
                     }
                     _ => {}

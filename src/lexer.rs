@@ -11,7 +11,7 @@ use crate::lexer_helpers::{
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     // === 1. Literals & Identifiers (Data) ===
-    Identifier(String), Bool(bool), StringLiteral(String),
+    Identifier(String), Bool(bool), StringLiteral(String, char),
     // BTW I named this as "WholeNumber" instead of "Integer"
     // since we don't detect negative numbers here. We emit a negative sign and a number,
     // then the parser handles the negative numbers
@@ -252,10 +252,7 @@ pub fn tokenize(source: &str) -> Vec<Token> {
             },
 
             _ => {
-                /*
-                 * Ignore or not to ignore?
-                 * Characters inside strings and comments are already handled
-                 */
+                // Characters inside strings and comments are already handled
                 unreachable!("Found an invalid character while tokenizing: {}", String::from(ch));
             },
         }

@@ -39,7 +39,7 @@ pub fn handle_string_literals(
         string_literal.push(next_char);
     }
 
-    Token::StringLiteral(string_literal)
+    Token::StringLiteral(string_literal, literal_quote)
 }
 
 // Instead of re-constructing brace blocks in the parser,
@@ -67,14 +67,15 @@ pub fn handle_brace_blocks(chars: &mut Peekable<CharIndices>) -> String {
 
                 _              => {},
             } },
-            // Handle string literals enclosed in quotes before handling braces
-            '"' | '\'' | '`' => if let Token::StringLiteral(string_literal)
+            // Handle string literals enclosed in quotes before handling braces.
+            // Also consume the first string quote
+            '"' | '\'' | '`' => { chars.next(); if let Token::StringLiteral(string_literal, _)
                 = handle_string_literals(chars, peeked_char) {
                 // Since 'string_literal' comes without the quotes,
                 // we use whatever quotes the string used, but the first quote symbol is already
                 // added at the start of the loop, so we only add the closing one
                 source.push_str(&format!("{string_literal}{peeked_char}"))
-            },
+            } },
 
             // If it's the first pair of braces (as in, 'asm { ... }'), then remove them
             // since parser expects the expression inside the braces (even if the said expression
@@ -88,5 +89,71 @@ pub fn handle_brace_blocks(chars: &mut Peekable<CharIndices>) -> String {
 
     if depth != 0 { unreachable!("Found an invalid brace depth: {depth}") }
 
-    source.trim().to_string()
+    source
+}
+
+// Maps the tokens to a string literal
+pub fn map_token(token: &Token) -> String {
+    let value_string = match token {
+        Token::Identifier(value)           => value,
+        Token::Bool(value)                 => { return value.to_string() },
+        Token::StringLiteral(value, quote) => { return format!("{quote}{value}{quote}") },
+        Token::WholeNumber(value)          => value,
+        Token::FloatNumber(value)          => value,
+        Token::Let                         => "let",
+        Token::Mut                         => "mut",
+        Token::Static                      => "static",
+        Token::Func                        => "func",
+        Token::If                          => "if",
+        Token::Else                        => "else",
+        Token::While                       => "while",
+        Token::Break                       => "break",
+        Token::Return                      => "return",
+        Token::Switch                      => "switch",
+        Token::Case                        => "case",
+        Token::Match                       => "match",
+        Token::Assign                      => "=",
+        Token::Div                         => "/",
+        Token::Mod                         => "%",
+        Token::Dot                         => ".",
+        Token::Arrow                       => "->",
+        Token::Plus                        => "+",
+        Token::Minus                       => "-",
+        Token::Star                        => "*",
+        Token::Exponent                    => "**",
+        Token::PlusPlus                    => "++",
+        Token::MinusMinus                  => "--",
+        Token::Eq                          => "==",
+        Token::InEq                        => "!=",
+        Token::GreaterThan                 => ">",
+        Token::LessThan                    => "<",
+        Token::GreaterThanOrEq             => ">=",
+        Token::LessThanOrEq                => "<=",
+        Token::Not                         => "!",
+        Token::PlusAssign                  => "+=",
+        Token::MinusAssign                 => "-=",
+        Token::StarAssign                  => "*=",
+        Token::DivAssign                   => "/=",
+        Token::ExponentAssign              => "**=",
+        Token::ModAssign                   => "%=",
+        Token::LParen                      => "(",
+        Token::RParen                      => ")",
+        Token::LBrace                      => "{",
+        Token::RBrace                      => "}",
+        Token::LBracket                    => "[",
+        Token::RBracket                    => "]",
+        Token::Colon                       => ":",
+        Token::Comma                       => ",",
+        Token::Newline                     => "\n",
+        Token::Semicolon                   => ";",
+        Token::UseLib                      => "UseLib",
+        Token::ASM(content)                => { return format!("asm {{ {content} }}") },
+        Token::Format                      => "Format",
+        Token::Directive(kind)             => kind,
+        Token::RawDirective(kind, content) => { return format!("{kind} {{ {content} }}") },
+        Token::End                         => "",
+        // _                               => unreachable!("Unexpected token: {token:?}"),
+    };
+
+    value_string.to_string()
 }

@@ -4,6 +4,7 @@ mod lexer;
 mod lexer_helpers;
 mod parser;
 mod parser_helpers;
+mod lexer_helpers;
 
 // "use kawaii::*;"
 use codegen::*;
