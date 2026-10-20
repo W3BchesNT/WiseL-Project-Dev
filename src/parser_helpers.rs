@@ -1,6 +1,7 @@
 use crate::lexer::Token;
 use crate::lexer_helpers::map_token;
 use crate::parser::{ASTNode, Expr, Stmt};
+use crate::parser_pratt::parse_expr;
 
 pub fn expect(
     iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>,
@@ -74,7 +75,7 @@ pub fn handle_let(
     skip_if(iter, Token::Colon);
     let ty = expect_ident(iter, "type");
     expect(iter, Token::Assign, "'='");
-    let value = parse_value(iter);
+    let value = parse_expr(iter);
     skip_if(iter, Token::Newline);
 
     (

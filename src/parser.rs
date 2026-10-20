@@ -9,6 +9,12 @@ use crate::parser_helpers::{
     handle_raw_statement,
 };
 
+#[derive(Debug, Clone)]
+pub enum BinaryOp {
+    Add,
+    Sub,
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -16,6 +22,12 @@ pub enum Expr {
     IntegerNumber(i32),
     Ident(String),
     String(String),
+
+    Binary {
+        op: BinaryOp,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
 }
 
 #[allow(dead_code)]

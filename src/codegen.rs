@@ -45,6 +45,7 @@ fn emit_arg_to_reg(
     local_vars: &HashMap<String, usize>,
 ) {
     match arg {
+        Expr::Binary { .. } => { /* TODO */ },
         Expr::FloatNumber(_n) => { /* TODO */ },
         Expr::IntegerNumber(n) => asm.push_str(&format!("    mov {}, {}\n", target_reg, n)),
         Expr::String(s) => asm.push_str(&format!("    mov {}, '{}'\n", target_reg, s)),
@@ -92,6 +93,7 @@ fn expr_to_asm_val(arg: &Expr) -> String {
         Expr::IntegerNumber(n) => n.to_string(),
         Expr::Ident(id) => id.clone(),
         Expr::String(s) => format!("'{}'", s),
+        Expr::Binary { .. } => { "TODO".to_string() /* TODO */ },
     }
 }
 
