@@ -4,10 +4,10 @@ use crate::parser_helpers::{
     expect,
     expect_ident,
     skip_if,
-    parse_value,
     handle_let,
     handle_raw_statement,
 };
+use crate::parser_pratt::parse_expr;
 
 #[derive(Debug, Clone)]
 pub enum BinaryOp {
@@ -132,7 +132,7 @@ fn parse_stmts(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>) -> V
                 // Optional return value
                 let value = if let Some(t) = iter.peek() {
                     if matches!(t, Token::Newline | Token::RBrace) { None }
-                    else { Some(parse_value(iter)) }
+                    else { Some(parse_expr(iter)) }
                 } else { None };
                 skip_if(iter, Token::Newline);
                 stmts.push(Stmt::Return(value));
@@ -153,7 +153,7 @@ fn parse_stmts(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>) -> V
                                 Token::Comma  => { iter.next(); continue },
                                 _             => {},
                             }
-                            args.push(parse_value(iter));
+                            args.push(parse_expr(iter));
                         }
 
                         skip_if(iter, Token::Newline);
@@ -183,20 +183,38 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
 
     while let Some(token) = iter.next() {
         match token {
-            Token::Identifier(identifier_value) if identifier_value == "Target" => {
-                if let Some(Token::StringLiteral(target_value, _)) = iter.peek() {
-                    let clear_target_value = target_value;
-                    statements.push(ASTNode::Target(clear_target_value.to_string()));
-                }
+            Token::Identifier(name) if name == "Target" => {
+                let target = match iter.next() {
+                    Some(Token::StringLiteral(value, _)) => value.clone(),
+                    other => panic!(
+                        "[ERROR.PARSER]: expected target string after 'Target', got {:?}",
+                        other
+                    ),
+                };
+
+                statements.push(ASTNode::Target(target));
             },
-            Token::UseLib => if let Some(Token::StringLiteral(lib_path, _)) = iter.peek() {
+
+            Token::UseLib => {
+                let lib_path = match iter.next() {
+                    Some(Token::StringLiteral(value, _)) => value.clone(),
+                    other => panic!(
+                        "[ERROR.PARSER]: expected library path after 'UseLib', got {:?}",
+                        other
+                    ),
+                };
+
                 match std::fs::read_to_string(&lib_path) {
                     Ok(lib_source) => {
                         let sub_tokens = tokenize(&lib_source);
                         let sub_nodes = parse(&sub_tokens);
                         statements.extend(sub_nodes);
                     }
-                    Err(err) => { eprintln!("[ERROR] Cannot read library '{lib_path}': {err}") }
+                    Err(err) => {
+                        eprintln!(
+                            "[ERROR] Cannot read library '{lib_path}': {err}"
+                        );
+                    }
                 }
             },
 
