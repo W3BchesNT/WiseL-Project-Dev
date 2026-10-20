@@ -1,13 +1,13 @@
-use crate::lexer::{Token, TokenKind};
+use crate::lexer::Token;
 use crate::parser::Expr;
 
 pub fn expect(
     iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>,
-    kind: TokenKind,
+    matches_fn: fn(&Token) -> bool,
     description: &str,
 ) -> Token {
     match iter.next() {
-        Some(t) if t.kind == kind => t.clone(),
+        Some(t) if matches_fn(t) => t.clone(),
         other => panic!(
             "[ERROR.PARSER]: expected {}, got {:?}",
             description, other
@@ -19,15 +19,21 @@ pub fn expect_ident(
     iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>,
     description: &str,
 ) -> String {
-    expect(iter, TokenKind::IDENT, description).value
+    match iter.next() {
+        Some(Token::Identifier(s)) => s.clone(),
+        other => panic!(
+            "[ERROR.PARSER]: expected {}, got {:?}",
+            description, other
+        ),
+    }
 }
 
 pub fn skip_if(
     iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>,
-    kind: TokenKind,
+    matches_fn: fn(&Token) -> bool,
 ) -> bool {
     if let Some(t) = iter.peek() {
-        if t.kind == kind {
+        if matches_fn(t) {
             iter.next();
             return true;
         }
@@ -39,19 +45,18 @@ pub fn parse_value(
     iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>,
 ) -> Expr {
     match iter.next() {
-        Some(t) if t.kind == TokenKind::NUMBER => {
-            let val = t.value.parse::<i32>().unwrap_or(0);
+        Some(Token::WholeNumber(s)) | Some(Token::FloatNumber(s)) => {
+            let val = s
+                .trim_end_matches(|c: char| c == 'h' || c == 'H')
+                .parse::<i32>()
+                .unwrap_or(0);
             Expr::Number(val)
         }
-        Some(t) if t.kind == TokenKind::IDENT => Expr::Ident(t.value.clone()),
-        Some(t) if t.kind == TokenKind::STRING => {
-            let clean_str = t.value.trim_matches('"').trim_matches('\'').to_string();
-            Expr::String(clean_str)
-        }
+        Some(Token::Identifier(s)) => Expr::Ident(s.clone()),
+        Some(Token::StringLiteral(s)) => Expr::String(s.clone()),
         other => panic!(
             "[ERROR.PARSER]: expected value (number, identifier, or string), got {:?}",
             other
         ),
     }
 }
-

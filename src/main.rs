@@ -1,6 +1,7 @@
 mod codegen;
 mod input;
 mod lexer;
+mod lexer_helpers;
 mod parser;
 mod parser_helpers;
 

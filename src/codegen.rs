@@ -122,7 +122,7 @@ fn push_func_body(
             crate::parser::Stmt::Call { name, args: call_args } => {
                 if let Some((_, fparams, fbody)) = find_inline_func(name, inline_funcs) {
                     for stmt in fbody {
-                        if let crate::parser::Stmt::Let { name: let_name, ty, value, .. } = stmt {
+                        if let crate::parser::Stmt::Let { name: _let_name, ty, value, .. } = stmt {
                             let target = if ty == "i32" { "eax" } else { "rax" };
                             emit_arg_to_reg(asm, target, value, &local_vars);
                         }

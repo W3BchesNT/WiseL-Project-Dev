@@ -1,0 +1,13 @@
+Format "PE64 Console"
+UseLib "library/c++/stdlib.wlib"
+
+func main() {
+    GetStdHandle()
+
+    let x: str = "Hello, World"
+
+    println("Hello, World!")
+    println("How are you?")
+
+    ExitProcess()
+}

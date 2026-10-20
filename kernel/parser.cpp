@@ -116,6 +116,27 @@ static shared_ptr<ASTNode> parse_primary_from(const vector<Token>& tks, size_t& 
     if (tks[i].type == TokenType::IDENT) {
         string name = tks[i].value;
         i++;
+        
+        if (i < tks.size() && tks[i].type == TokenType::LPAREN) {
+            i++;
+            auto node = make_shared<ASTNode>();
+            node->type = NodeType::FUNC_CALL;
+            node->value = name;
+            
+            while (i < tks.size() && tks[i].type != TokenType::RPAREN) {
+                if (tks[i].type == TokenType::COMMA) {
+                    i++;
+                    continue;
+                }
+                if (!tks[i].value.empty()) {
+                    node->args.push_back(tks[i].value);
+                }
+                i++;
+            }
+            if (i < tks.size() && tks[i].type == TokenType::RPAREN) i++;
+            return node;
+        }
+        
         if (i < tks.size() && tks[i].type == TokenType::LBRACKET) {
             i++;
             auto idx = parse_expr_from(tks, i, 0);
@@ -136,6 +157,7 @@ static shared_ptr<ASTNode> parse_primary_from(const vector<Token>& tks, size_t& 
 
     return nullptr;
 }
+
 
 static shared_ptr<ASTNode> parse_expr_from(const vector<Token>& tks, size_t& i, int min_prec) {
     shared_ptr<ASTNode> left;
@@ -256,11 +278,26 @@ ASTNode parse_let_stmt(const vector<Token>& tokens, size_t& pos, bool is_static,
             node.var_value = "[" + joined + "]";
         }
         else {
-            parse_rvalue_expr(tokens, pos, node, TokenType::NEWLINE);
+            vector<Token> expr_tokens;
+            while (pos < tokens.size() && tokens[pos].type != TokenType::NEWLINE) {
+                expr_tokens.push_back(tokens[pos]);
+                pos++;
+            }
+            
+            string raw_val;
+            for (const auto& t : expr_tokens) {
+                if (!raw_val.empty()) raw_val += " ";
+                raw_val += t.value;
+            }
+            node.var_value = raw_val;
+
+            size_t ei = 0;
+            node.expr = parse_expr_from(expr_tokens, ei, 0);
         }
     }
     return node;
 }
+
 
 static ASTNode parse_block(const vector<Token>& tokens, size_t& pos);
 
