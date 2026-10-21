@@ -22,8 +22,6 @@ static const TypeInfo TYPE_TABLE[] = {
     {"u32",  4,  false, "dd", "movzx"},
     {"i64",  8,  true,  "dq", "mov"},
     {"u64",  8,  false, "dq", "mov"},
-    {"i128", 16, true,  "dq", "mov"},
-    {"u128", 16, false, "dq", "mov"},
 };
 
 static const TypeInfo* lookup_type(const string& t) {

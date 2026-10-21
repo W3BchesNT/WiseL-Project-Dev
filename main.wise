@@ -1,8 +1,12 @@
-Target "Linux"
+Target "Windows"
 UseLib "library/stdlib.wlib"
 
 let str_hi: str = "Hello, World!"
 let str_hru: str = "How are you?"
+let str_new: str = "What are you doing?"
+let str_by: str = "Bye, World!"
+
+@library kernel32 { GetStdHandle WriteConsoleA ExitProcess }
 
 fn syscall(a: any, b: any, c: any) {
     asm {
@@ -14,8 +18,30 @@ fn syscall(a: any, b: any, c: any) {
     }
 }
 
+fn print(s: str, len: i32) {
+    asm {
+        sub rsp, 56
+        mov rcx, -11
+        call qword [GetStdHandle]
+        mov rcx, rax
+        lea rdx, [{s}]
+        mov r8, {len}
+        lea r9, [rsp+40]
+        mov qword [rsp+32], 0
+        mov qword [rsp+40], 0
+        call qword [WriteConsoleA]
+        add rsp, 56
+    }
+}
+
 fn main() {
-    syscall(1, 1, str_hi)
-    syscall(1, 1, str_hru)
-    exit()
+    print(str_hi, 15)
+    print(str_hru, 14)
+    print(str_new, 21)
+    print(str_by, 13)
+
+    asm {
+        mov rcx, 0
+        call qword [ExitProcess]
+    }
 }

@@ -1,7 +1,6 @@
 @echo off
 setlocal
 
-cargo run
 
 cd /d "%~dp0"
 
