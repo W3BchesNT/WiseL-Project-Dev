@@ -11,8 +11,9 @@ use crate::parser_pratt::parse_expr;
 
 #[derive(Debug, Clone)]
 pub enum BinaryOp {
-    Add,
-    Sub,
+    Add, Sub, Mul, Div, Mod,
+    Eq, Ne, Lt, Gt, Le, Ge,
+    And, Or,
 }
 
 #[allow(dead_code)]
@@ -46,6 +47,21 @@ pub enum Stmt {
     Return(Option<Expr>),
     Asm(String),
     Raw(String),
+
+    If {
+        condition: Expr,
+        then_body: Vec<Stmt>,
+        else_body: Option<Vec<Stmt>>,
+    },
+    While {
+        condition: Expr,
+        body: Vec<Stmt>,
+    },
+    Assign { 
+        name: String,
+        value: Expr
+    },
+    Break,
 }
 
 #[allow(dead_code)]
@@ -166,6 +182,39 @@ fn parse_stmts(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>) -> V
                     stmts.push(Stmt::Raw(identifier_value.clone()));
                 }
             }
+
+            Token::If => {
+                skip_if(iter, Token::LParen);
+                let condition = parse_expr(iter);
+                skip_if(iter, Token::RParen);
+                skip_if(iter, Token::Newline);
+                let then_body = parse_stmts(iter);
+                skip_if(iter, Token::Newline);
+
+                let else_body = if skip_if(iter, Token::Else) {
+                    skip_if(iter, Token::Newline);
+                    Some(parse_stmts(iter))
+                } else {
+                    None
+                };
+
+                stmts.push(Stmt::If { condition, then_body, else_body } );
+            }
+
+            Token::While => {
+                skip_if(iter, Token::LParen);
+                let condition = parse_expr(iter);
+                skip_if(iter, Token::RParen);
+                skip_if(iter, Token::Newline);
+                let body = parse_stmts(iter);
+                stmts.push(Stmt::While { condition, body } );
+            }
+
+            Token::Break => {
+                skip_if(iter, Token::Newline);
+                stmts.push(Stmt::Break);
+            }
+
             Token::Newline => {}
             _              => {
                 // Everything else — Raw
@@ -183,13 +232,10 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
 
     while let Some(token) = iter.next() {
         match token {
-            Token::Identifier(name) if name == "Target" => {
+            Token::Target => {
                 let target = match iter.next() {
                     Some(Token::StringLiteral(value, _)) => value.clone(),
-                    other => panic!(
-                        "[ERROR.PARSER]: expected target string after 'Target', got {:?}",
-                        other
-                    ),
+                    other => panic!("[ERROR.PARSER]: expected target string after 'Target', got {:?}",other),
                 };
 
                 statements.push(ASTNode::Target(target));
@@ -198,10 +244,7 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
             Token::UseLib => {
                 let lib_path = match iter.next() {
                     Some(Token::StringLiteral(value, _)) => value.clone(),
-                    other => panic!(
-                        "[ERROR.PARSER]: expected library path after 'UseLib', got {:?}",
-                        other
-                    ),
+                    other => panic!("[ERROR.PARSER]: expected library path after 'UseLib', got {:?}",other),
                 };
 
                 match std::fs::read_to_string(&lib_path) {
@@ -211,9 +254,7 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                         statements.extend(sub_nodes);
                     }
                     Err(err) => {
-                        eprintln!(
-                            "[ERROR] Cannot read library '{lib_path}': {err}"
-                        );
+                        eprintln!("[ERROR] Cannot read library '{lib_path}': {err}");
                     }
                 }
             },

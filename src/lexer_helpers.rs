@@ -147,6 +147,7 @@ pub fn map_token(token: &Token) -> String {
         Token::Newline                     => "\n",
         Token::Semicolon                   => ";",
         Token::UseLib                      => "UseLib",
+        Token::Target                      => "Target",
         Token::ASM(content)                => { return format!("asm {{ {content} }}") },
         Token::Format                      => "Format",
         Token::Directive(kind)             => kind,

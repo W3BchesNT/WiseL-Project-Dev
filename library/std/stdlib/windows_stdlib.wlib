@@ -13,6 +13,21 @@
     ExitProcess
 }
 
+fn WriteConsoleA(s: str, len: i32) {
+    asm {
+        sub rsp, 40
+        mov rcx, -11
+        call qword [GetStdHandle]
+        mov rcx, rax
+        lea rdx, [{s}]
+        mov r8, {len}
+        lea r9, [rsp+32]
+        mov qword [rsp+32], 0
+        call qword [WriteConsoleA]
+        add rsp, 40
+    }
+}
+
 fn GetStdHandle() {
     asm {
         invoke GetStdHandle, -11

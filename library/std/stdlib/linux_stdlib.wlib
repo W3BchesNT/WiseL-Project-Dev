@@ -1,4 +1,14 @@
-fn exit() {
+fn syscall(a: any, b: any, c: any) {
+    asm {
+        mov rax, {a}
+        mov rdi, {b}
+        lea rsi, [{c}]
+        mov rdx, {c}_len
+        syscall
+    }
+}
+
+fn Exit() {
     asm {
         mov rax, 60
         xor rdi, rdi

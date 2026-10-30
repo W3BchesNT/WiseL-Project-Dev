@@ -6,42 +6,16 @@ let str_hru: str = "How are you?"
 let str_new: str = "What are you doing?"
 let str_by: str = "Bye, World!"
 
-@library kernel32 { GetStdHandle WriteConsoleA ExitProcess }
-
-fn syscall(a: any, b: any, c: any) {
-    asm {
-        mov rax, {a}
-        mov rdi, {b}
-        lea rsi, [{c}]
-        mov rdx, {c}_len
-        syscall
-    }
-}
-
-fn print(s: str, len: i32) {
-    asm {
-        sub rsp, 56
-        mov rcx, -11
-        call qword [GetStdHandle]
-        mov rcx, rax
-        lea rdx, [{s}]
-        mov r8, {len}
-        lea r9, [rsp+40]
-        mov qword [rsp+32], 0
-        mov qword [rsp+40], 0
-        call qword [WriteConsoleA]
-        add rsp, 56
-    }
-}
+let a: i32 = 10
 
 fn main() {
-    print(str_hi, 15)
-    print(str_hru, 14)
-    print(str_new, 21)
-    print(str_by, 13)
-
-    asm {
-        mov rcx, 0
-        call qword [ExitProcess]
+    if (a == 10) {
+        WriteConsoleA(str_hi, 15)
+    } else {
+        WriteConsoleA(str_by, 13)
     }
+
+    WriteConsoleA(str_hru, 14)
+    WriteConsoleA(str_new, 21)
+    Exit()
 }

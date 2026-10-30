@@ -36,9 +36,8 @@ pub enum Token {
 
     // === 7. System & Directives ===
     // Directive has two 'String' fields:
-    // (1) Kind (@data, @library, etc.)
-    // (2) Data
-    UseLib, ASM(String), Format, Directive(String), RawDirective(String, String),
+    // (1) Kind (@data, @library, etc.) (2) Data
+    Target, UseLib, ASM(String), Format, Directive(String), RawDirective(String, String),
 
     End,
 }
@@ -67,6 +66,7 @@ fn identify_char_sequence(word: &str) -> Token {
         "asm"    => Token::ASM("".to_string()),
         "UseLib" => Token::UseLib,
         "Format" => Token::Format,
+        "Target" => Token::Target,
 
         _        => Token::Identifier(word.to_string()),
     }
