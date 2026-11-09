@@ -9,13 +9,15 @@ let str_by: str = "Bye, World!"
 let a: i32 = 10
 
 fn main() {
-    if (a == 10) {
-        WriteConsoleA(str_hi, 15)
-    } else {
-        WriteConsoleA(str_by, 13)
+    @target="Windows" {
+        WindowsShadowSpace()
     }
-
-    WriteConsoleA(str_hru, 14)
-    WriteConsoleA(str_new, 21)
+    println(str_new)
+    if (a > 1) {
+        println("Hello, World!")
+    } else {
+        println("Bye, World!")
+    }
+    endline()
     Exit()
 }

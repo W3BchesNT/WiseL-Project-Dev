@@ -62,6 +62,10 @@ pub enum Stmt {
         value: Expr
     },
     Break,
+    TargetBlock {
+        target: String,
+        stmts: Vec<Stmt>,
+    },
 }
 
 #[allow(dead_code)]
@@ -128,7 +132,103 @@ fn parse_braces_block(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>
     Some(content.trim().to_string())
 }
 
-// Parse function body into Vec<Stmt>
+fn parse_stmts_body(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>) -> Vec<Stmt> {
+    let mut stmts = Vec::new();
+
+    while let Some(token) = iter.next() {
+        match token {
+            Token::Let => { let (_, stmt) = handle_let(iter); stmts.push(stmt) },
+            Token::Return => {
+                let value = if let Some(t) = iter.peek() {
+                    if matches!(t, Token::Newline | Token::RBrace) { None }
+                    else { Some(parse_expr(iter)) }
+                } else { None };
+                skip_if(iter, Token::Newline);
+                stmts.push(Stmt::Return(value));
+            }
+            Token::ASM(content) => { stmts.push(Stmt::Asm(content.to_string())) }
+            Token::Identifier(identifier_value) => {
+                let ident = identifier_value.clone();
+                match iter.peek() {
+                    Some(Token::LParen) => {
+                        iter.next();
+                        let mut args = Vec::new();
+                        while let Some(arg_token) = iter.peek() {
+                            match arg_token {
+                                Token::RParen => { iter.next(); break },
+                                Token::Comma  => { iter.next(); continue },
+                                _             => {},
+                            }
+                            args.push(parse_expr(iter));
+                        }
+                        skip_if(iter, Token::Newline);
+                        stmts.push(Stmt::Call { name: ident, args });
+                    }
+                    Some(Token::Assign) => {
+                        iter.next();
+                        let value = parse_expr(iter);
+                        skip_if(iter, Token::Newline);
+                        stmts.push(Stmt::Assign { name: ident, value });
+                    }
+                    _ => {
+                        stmts.push(handle_raw_statement(iter, token));
+                    }
+                }
+            }
+            Token::If => {
+                skip_if(iter, Token::LParen);
+                let condition = parse_expr(iter);
+                skip_if(iter, Token::RParen);
+                skip_if(iter, Token::Newline);
+                let then_body = parse_stmts(iter);
+                skip_if(iter, Token::Newline);
+                let else_body = if skip_if(iter, Token::Else) {
+                    skip_if(iter, Token::Newline);
+                    Some(parse_stmts(iter))
+                } else {
+                    None
+                };
+                stmts.push(Stmt::If { condition, then_body, else_body });
+            }
+            Token::While => {
+                skip_if(iter, Token::LParen);
+                let condition = parse_expr(iter);
+                skip_if(iter, Token::RParen);
+                skip_if(iter, Token::Newline);
+                let body = parse_stmts(iter);
+                stmts.push(Stmt::While { condition, body });
+            }
+            Token::Break => {
+                skip_if(iter, Token::Newline);
+                stmts.push(Stmt::Break);
+            }
+            Token::Directive(directive_kind) if directive_kind == "@target" => {
+                skip_if(iter, Token::Assign);
+                let target_name = match iter.next() {
+                    Some(Token::StringLiteral(value, _)) => value.to_string(),
+                    Some(Token::Identifier(value)) => value.clone(),
+                    _ => String::new(),
+                };
+                if let Some(block_content) = parse_braces_block(iter) {
+                    let sub_tokens = tokenize(&block_content);
+                    let mut sub_iter = sub_tokens.iter().peekable();
+                    let sub_stmts = parse_stmts_body(&mut sub_iter);
+                    stmts.push(Stmt::TargetBlock {
+                        target: target_name,
+                        stmts: sub_stmts,
+                    });
+                }
+            }
+            Token::Newline => {}
+            _ => {
+                stmts.push(handle_raw_statement(iter, token));
+            }
+        }
+    }
+
+    stmts
+}
+
 fn parse_stmts(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>) -> Vec<Stmt> {
     let mut stmts = Vec::new();
 
@@ -145,7 +245,6 @@ fn parse_stmts(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>) -> V
         match token {
             Token::Let => { let (_, stmt) = handle_let(iter); stmts.push(stmt) },
             Token::Return => {
-                // Optional return value
                 let value = if let Some(t) = iter.peek() {
                     if matches!(t, Token::Newline | Token::RBrace) { None }
                     else { Some(parse_expr(iter)) }
@@ -155,14 +254,12 @@ fn parse_stmts(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>) -> V
             }
             Token::ASM(content)                 => { stmts.push(Stmt::Asm(content.to_string())) }
             Token::Identifier(identifier_value) => {
-                // Try to parse as function call
-                if let Some(t) = iter.peek() {
-                    if matches!(t, Token::LParen) {
-                        let name = identifier_value.clone();
-                        iter.next(); // skip '('
+                let ident = identifier_value.clone();
+                match iter.peek() {
+                    Some(Token::LParen) => {
+                        iter.next();
                         let mut args = Vec::new();
 
-                        // Parse arguments
                         while let Some(arg_token) = iter.peek() {
                             match arg_token {
                                 Token::RParen => { iter.next(); break },
@@ -173,13 +270,17 @@ fn parse_stmts(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>) -> V
                         }
 
                         skip_if(iter, Token::Newline);
-                        stmts.push(Stmt::Call { name, args });
-                    } else {
-                        // Not a call — save as Raw
+                        stmts.push(Stmt::Call { name: ident, args });
+                    }
+                    Some(Token::Assign) => {
+                        iter.next();
+                        let value = parse_expr(iter);
+                        skip_if(iter, Token::Newline);
+                        stmts.push(Stmt::Assign { name: ident, value });
+                    }
+                    _ => {
                         stmts.push(handle_raw_statement(iter, token));
                     }
-                } else {
-                    stmts.push(Stmt::Raw(identifier_value.clone()));
                 }
             }
 
@@ -215,9 +316,26 @@ fn parse_stmts(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>) -> V
                 stmts.push(Stmt::Break);
             }
 
+            Token::Directive(directive_kind) if directive_kind == "@target" => {
+                skip_if(iter, Token::Assign);
+                let target_name = match iter.next() {
+                    Some(Token::StringLiteral(value, _)) => value.to_string(),
+                    Some(Token::Identifier(value)) => value.clone(),
+                    _ => String::new(),
+                };
+                if let Some(block_content) = parse_braces_block(iter) {
+                    let sub_tokens = tokenize(&block_content);
+                    let mut sub_iter = sub_tokens.iter().peekable();
+                    let sub_stmts = parse_stmts_body(&mut sub_iter);
+                    stmts.push(Stmt::TargetBlock {
+                        target: target_name,
+                        stmts: sub_stmts,
+                    });
+                }
+            }
+
             Token::Newline => {}
             _              => {
-                // Everything else — Raw
                 stmts.push(handle_raw_statement(iter, token));
             }
         }
@@ -285,7 +403,6 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                                 let t = cur_type.take().unwrap_or_else(|| "any".to_string());
                                 params.push((n, t));
                             },
-                            // Token::Colon => {},
                             Token::Identifier(identifier_value) => {
                                 if cur_name.is_none() { cur_name = Some(identifier_value.clone()) }
                                 else if cur_type.is_none() { cur_type = Some(identifier_value.clone()) }
@@ -295,7 +412,6 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                     }
                 }
 
-                // Parse body as Vec<Stmt> instead of String
                 let body = parse_stmts(&mut iter);
                 statements.push(ASTNode::Func {
                     name: func_name,

@@ -11,20 +11,57 @@
     GetStdHandle
     WriteConsoleA
     ExitProcess
+    ReadConsoleA
+}
+
+fn println(s: str) {
+    asm {
+        sub rsp, 40
+
+        mov rcx, -11
+        call qword [GetStdHandle]
+
+        mov rcx, rax
+        lea rdx, [{s}]
+        mov r8, {s}_len
+        lea r9, [rsp+32]
+
+        mov qword [rsp+32], 0
+        call qword [WriteConsoleA]
+        add rsp, 40
+    }
 }
 
 fn WriteConsoleA(s: str, len: i32) {
     asm {
         sub rsp, 40
+
         mov rcx, -11
         call qword [GetStdHandle]
+
         mov rcx, rax
         lea rdx, [{s}]
         mov r8, {len}
         lea r9, [rsp+32]
+
         mov qword [rsp+32], 0
         call qword [WriteConsoleA]
         add rsp, 40
+    }
+}
+
+fn endline() {
+    asm {
+        sub rsp, 312
+        mov rcx, -10
+        call qword [GetStdHandle]
+        mov rcx, rax
+        lea rdx, [rsp+40]
+        mov r8, 255
+        lea r9, [rsp+296]
+        mov qword [r9], 0
+        call qword [ReadConsoleA]
+        add rsp, 312
     }
 }
 

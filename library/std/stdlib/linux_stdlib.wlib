@@ -8,6 +8,28 @@ fn syscall(a: any, b: any, c: any) {
     }
 }
 
+fn println(s: str) {
+    asm {
+        mov rax, 1
+        mov rdi, 1
+        lea rsi, [{s}]
+        mov rdx, {s}_len
+        syscall
+    }
+}
+
+fn endline() {
+    asm {
+        sub rsp, 272
+        mov rax, 0
+        mov rdi, 0
+        lea rsi, [rsp]
+        mov rdx, 256
+        syscall
+        add rsp, 272
+    }
+}
+
 fn Exit() {
     asm {
         mov rax, 60

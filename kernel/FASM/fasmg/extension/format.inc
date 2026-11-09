@@ -1,7 +1,14 @@
 macro set_build? arch*, os*, type*
     define CURRENT_ARCH arch
+    define CURRENT_OS 'LINUX'
+    
+    ; Выносим общие регистры для X64
+    match =X64, arch
+        define t0_64 rax: define t0_32 eax: define t1_64 rcx: define t1_32 ecx
+        define t2_64 rdx: define t2_32 edx: define t3_64 rbx: define t3_32 ebx
+    end match
+
     match =Linux, os
-        define CURRENT_OS 'LINUX'
         include 'format/elfexe.inc'
         ELF.Settings.Class = 2
         ELF.Settings.Type = ET_DYN
@@ -11,43 +18,21 @@ macro set_build? arch*, os*, type*
         match =ARM64, arch
             ELF.Settings.Machine = EM_AARCH64
             include '../../aarch64/iset/aarch64.inc'
-            define t0_64 x0
-            define t0_32 w0
-            define t1_64 x1
-            define t1_32 w1
-            define t2_64 x2
-            define t2_32 w2
-            define t3_64 x3
-            define t3_32 w3
+            define t0_64 x0: define t0_32 w0: define t1_64 x1: define t1_32 w1
+            define t2_64 x2: define t2_32 w2: define t3_64 x3: define t3_32 w3
         else match =X64, arch
             ELF.Settings.Machine = EM_X86_64
             include 'cpu/x64.inc'
-            define t0_64 rax
-            define t0_32 eax
-            define t1_64 rcx
-            define t1_32 ecx
-            define t2_64 rdx
-            define t2_32 edx
-            define t3_64 rbx
-            define t3_32 ebx
         end match
     else match =Windows, os
         define CURRENT_OS 'WINDOWS'
         include 'format/format.inc'
+        
         match =Console, type
             format PE64 console
         else match =GUI, type
             format PE64 GUI
         end match
-        include 'macro/import64.inc'
-        define t0_64 rax
-        define t0_32 eax
-        define t1_64 rcx
-        define t1_32 ecx
-        define t2_64 rdx
-        define t2_32 edx
-        define t3_64 rbx
-        define t3_32 ebx
     end match
 end macro
 
@@ -73,6 +58,9 @@ end macro
 macro import_block
     match ='WINDOWS', CURRENT_OS
         section '.idata' import data readable writeable
+        ; Подключаем штатные макросы импорта строго внутри секции импорта,
+        ; чтобы они не конфликтовали с заголовками PE и не ломали парсер.
+        include 'macro/import64.inc'
     else match ='LINUX', CURRENT_OS
         macro library? dummy&
         end macro
