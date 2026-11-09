@@ -55,6 +55,7 @@ struct Ctx<'a> {
     label_counter: usize,
     globals: &'a HashMap<String, String>,
     strings: &'a mut StringLiterals,
+    epilogue_label: String,
 }
 
 impl<'a> Ctx<'a> {
@@ -115,10 +116,6 @@ fn flatten_ast(ast: &[ASTNode], current_platform: TargetPlatform) -> Vec<ASTNode
     result
 }
 
-fn is_inline_func(name: &str, inline_funcs: &[InlineFunc]) -> bool {
-    inline_funcs.iter().any(|f| f.name == name)
-}
-
 fn find_inline_func<'a>(name: &str, inline_funcs: &'a [InlineFunc]) -> Option<&'a InlineFunc> {
     inline_funcs.iter().find(|f| f.name == name)
 }
@@ -148,7 +145,13 @@ fn resolve_arg(ctx: &mut Ctx, arg: &Expr, param_ty: &str, func_name: &str) -> St
         ("i32", Expr::IntegerNumber(n)) => n.to_string(),
         ("i32", Expr::Ident(name)) => {
             match ctx.lookup_var_type(name) {
-                Some(ty) if ty == "i32" => name.clone(),
+                Some(ty) if ty == "i32" => {
+                    if let Some(lv) = ctx.local_vars.get(name) {
+                        format!("[rbp - {}]", lv.offset + 8)
+                    } else {
+                        format!("[{}]", name)
+                    }
+                }
                 Some(ty) => panic!(
                     "[ERROR.CODEGEN]: variable `{}` has type `{}`, expected `i32`",
                     name, ty
@@ -178,6 +181,15 @@ fn emit_arg_to_reg(ctx: &mut Ctx, target_reg: &str, arg: &Expr) {
         Expr::FloatNumber(_n) => {}
         Expr::IntegerNumber(n) => ctx.line(&format!("mov {}, {}", target_reg, n)),
         Expr::String(s) => ctx.line(&format!("mov {}, '{}'", target_reg, s)),
+        Expr::Call { name, args } => {
+            emit_call(ctx, name, args);
+            let src = if target_reg.starts_with('e') || target_reg.ends_with('d') {
+                "eax"
+            } else {
+                "rax"
+            };
+            ctx.line(&format!("mov {}, {}", target_reg, src));
+        }
         Expr::Ident(s) => {
             // RU:
                 // Локальная: Загрузка из стека
@@ -194,7 +206,7 @@ fn emit_arg_to_reg(ctx: &mut Ctx, target_reg: &str, arg: &Expr) {
                     "r9d" | "r9" => "r9",
                     _ => target_reg,
                 };
-                ctx.line(&format!("mov {}, [rsp + {}]", reg_64, offset));
+                ctx.line(&format!("mov {}, [rbp - {}]", reg_64, offset + 8));
             } else {
                 let reg_32 = match target_reg {
                     "rax" | "eax" => "eax",
@@ -220,6 +232,7 @@ fn expr_to_asm_val(arg: &Expr) -> String {
         Expr::Ident(id) => id.clone(),
         Expr::String(s) => format!("'{}'", s),
         Expr::Binary { .. } => "TODO".to_string(),
+        Expr::Call { .. } => "TODO".to_string(),
     }
 }
 
@@ -278,6 +291,13 @@ fn emit_call(ctx: &mut Ctx, name: &str, call_args: &[Expr]) {
 
 // RU: Генерация локальных let
 fn emit_let(ctx: &mut Ctx, name: &str, ty: &str, value: &Expr) {
+    if ctx.local_vars.contains_key(name) {
+        let offset = ctx.local_vars.get(name).unwrap().offset;
+        let target = if ty == "i32" { "eax" } else { "rax" };
+        emit_arg_to_reg(ctx, target, value);
+        ctx.line(&format!("mov [rbp - {}], rax", offset + 8));
+        return;
+    }
     let offset = ctx.current_var_index * 8;
     ctx.current_var_index += 1;
     let target = if ty == "i32" { "eax" } else { "rax" };
@@ -286,17 +306,14 @@ fn emit_let(ctx: &mut Ctx, name: &str, ty: &str, value: &Expr) {
         offset,
         ty: ty.to_string(),
     });
-    ctx.line(&format!("mov [rsp + {}], rax", offset));
+    ctx.line(&format!("mov [rbp - {}], rax", offset + 8));
 }
 
 fn emit_return(ctx: &mut Ctx, value: Option<&Expr>) {
     if let Some(v) = value {
         emit_arg_to_reg(ctx, "rax", v);
     }
-    if ctx.stack_size > 0 {
-        ctx.line(&format!("add rsp, {}", ctx.stack_size));
-    }
-    ctx.line("ret");
+    ctx.line(&format!("jmp {}", ctx.epilogue_label));
 }
 
 // RU: Генарато бенарных операций:
@@ -437,6 +454,10 @@ fn expr_src(e: &crate::parser::Expr) -> String {
             };
             format!("{} {} {}", expr_src(left), o, expr_src(right))
         }
+        Expr::Call { name, args } => {
+            let a: Vec<String> = args.iter().map(expr_src).collect();
+            format!("{}({})", name, a.join(", "))
+        }
     }
 }
 
@@ -489,7 +510,7 @@ fn emit_stmt(ctx: &mut Ctx, stmt: &crate::parser::Stmt) {
             if let Some(lv) = ctx.local_vars.get(name) {
                 let offset = lv.offset;
                 emit_arg_to_reg(ctx, "rax", value);
-                ctx.line(&format!("mov [rsp + {}], rax", offset));
+                ctx.line(&format!("mov [rbp - {}], rax", offset + 8));
             }
         }
         crate::parser::Stmt::Break => {}
@@ -509,39 +530,70 @@ fn emit_stmt(ctx: &mut Ctx, stmt: &crate::parser::Stmt) {
 }
 
 // RU: Генератор тела функции
-fn push_func_body(ctx: &mut Ctx, stmts: &[crate::parser::Stmt]) {
+fn push_func_body(ctx: &mut Ctx, stmts: &[crate::parser::Stmt], params: &[(String, String)]) {
     ctx.local_vars.clear();
     ctx.current_var_index = 0;
-    let total_vars = count_local_vars(stmts);
+    let total_vars = count_local_vars(stmts) + params.len();
     ctx.stack_size = ((total_vars * 8) + 15) & !15;
+    ctx.epilogue_label = ctx.new_label("epilogue");
 
+    ctx.raw("    push rbp\n");
+    ctx.raw("    mov rbp, rsp\n");
     if ctx.stack_size > 0 {
         ctx.line(&format!("sub rsp, {}", ctx.stack_size));
+    }
+
+    let arg_regs = match ctx.platform {
+        TargetPlatform::Linux => ["rdi", "rsi", "rdx", "rcx", "r8", "r9"],
+        TargetPlatform::Windows => ["rcx", "rdx", "r8", "r9", "rax", "rax"],
+    };
+    for (i, (pname, pty)) in params.iter().enumerate() {
+        if i >= arg_regs.len() { break; }
+        let offset = ctx.current_var_index * 8;
+        ctx.current_var_index += 1;
+        ctx.local_vars.insert(pname.clone(), LocalVar {
+            offset,
+            ty: pty.clone(),
+        });
+        let reg = if pty == "i32" {
+            match arg_regs[i] {
+                "rdi" => "edi", "rsi" => "esi", "rdx" => "edx", "rcx" => "ecx",
+                "r8" => "r8d", "r9" => "r9d", r => r,
+            }
+        } else {
+            arg_regs[i]
+        };
+        ctx.line(&format!("mov [rbp - {}], {}", offset + 8, reg));
     }
 
     for stmt in stmts {
         emit_stmt(ctx, stmt);
     }
 
-    if stmts.last().map_or(true, |last| !matches!(last, crate::parser::Stmt::Return(_))) {
-        if ctx.stack_size > 0 {
-            ctx.line(&format!("add rsp, {}", ctx.stack_size));
-        }
-    }
+    let ep = ctx.epilogue_label.clone();
+    ctx.label(&ep);
+    ctx.raw("    mov rsp, rbp\n");
+    ctx.raw("    pop rbp\n");
+    ctx.raw("    ret\n");
 }
 
 // RU: Генератор функций: main -> entry; пользовательские через fn_{name}
 fn emit_all_funcs(ctx: &mut Ctx, ast: &[ASTNode]) {
     for node in ast {
-        if let ASTNode::Func { name, body, .. } = node {
+        if let ASTNode::Func { name, body, params, is_inline } = node {
+            if *is_inline {
+                continue;
+            }
             match name.as_str() {
-                "main" => push_func_body(ctx, body),
-                _ if !is_inline_func(name, ctx.inline_funcs) => {
-                    ctx.raw(&format!("fn_{}:\n", name));
-                    push_func_body(ctx, body);
-                    ctx.raw("    ret\n\n");
+                "main" => {
+                    ctx.raw("start:\n");
+                    push_func_body(ctx, body, params);
                 }
-                _ => {}
+                _ => {
+                    ctx.raw(&format!("fn_{}:\n", name));
+                    push_func_body(ctx, body, params);
+                    ctx.raw("\n");
+                }
             }
         }
     }
@@ -676,11 +728,10 @@ pub fn generate(raw_ast: &[ASTNode]) -> String {
     let mut inline_funcs: Vec<InlineFunc> = Vec::new();
 
     for node in &ast {
-        if let ASTNode::Func { name, params, body } = node {
+        if let ASTNode::Func { name, params, body, is_inline } = node {
             if name != "main" {
                 user_funcs.push(name.clone());
-                let has_asm = body.iter().any(|stmt| matches!(stmt, crate::parser::Stmt::Asm(_)));
-                if has_asm {
+                if *is_inline {
                     inline_funcs.push(InlineFunc {
                         name: name.clone(),
                         params: params.clone(),
@@ -713,6 +764,7 @@ pub fn generate(raw_ast: &[ASTNode]) -> String {
             label_counter: 0,
             globals: &globals,
             strings: &mut strings,
+            epilogue_label: String::new(),
         };
         emit_all_funcs(&mut ctx, &ast);
     }
@@ -732,7 +784,6 @@ pub fn generate(raw_ast: &[ASTNode]) -> String {
     emit_data(&mut asm, &ast, &mut globals, &strings);
 
     asm.push_str("code_block\n\n");
-    asm.push_str("start:\n");
     asm.push_str(&code);
     asm.push('\n');
 

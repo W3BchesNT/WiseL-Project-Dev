@@ -14,7 +14,7 @@
     ReadConsoleA
 }
 
-fn println(s: str) {
+inline print_str(s: str) {
     asm {
         sub rsp, 40
 
@@ -32,7 +32,27 @@ fn println(s: str) {
     }
 }
 
-fn WriteConsoleA(s: str, len: i32) {
+inline print_int(n: i32) {
+    asm {
+        sub rsp, 40
+        mov rcx, -11
+        call qword [GetStdHandle]
+        mov rcx, rax
+
+        lea rdx, [rsp + 32]
+        mov eax, {n}
+        add al, '0'
+        mov [rdx], al
+        mov byte [rdx + 1], 10
+        mov r8, 2
+        lea r9, [rsp + 24]
+        mov qword [r9], 0
+        call qword [WriteConsoleA]
+        add rsp, 40
+    }
+}
+
+inline WriteConsoleA(s: str, len: i32) {
     asm {
         sub rsp, 40
 
@@ -50,7 +70,7 @@ fn WriteConsoleA(s: str, len: i32) {
     }
 }
 
-fn endline() {
+inline endline() {
     asm {
         sub rsp, 312
         mov rcx, -10
@@ -65,20 +85,28 @@ fn endline() {
     }
 }
 
-fn GetStdHandle() {
+inline GetStdHandle() {
     asm {
         invoke GetStdHandle, -11
         WSTORE hStdOut, t0_64
     }
 }
 
-fn Exit() {
+inline Exit() {
     asm {
         invoke ExitProcess, 0
     }
 }
 
-fn WindowsShadowSpace() {
+inline WindowsShadowSpace() {
+    asm {
+        sub rsp, 8
+        and rsp, -16
+        sub rsp, 40
+    }
+}
+
+inline DisabledWindowsShadowSpace() {
     asm {
         pop rax
         sub rsp, 8

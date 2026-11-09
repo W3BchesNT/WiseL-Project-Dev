@@ -104,6 +104,7 @@ pub fn map_token(token: &Token) -> String {
         Token::Mut                         => "mut",
         Token::Static                      => "static",
         Token::Func                        => "func",
+        Token::Inline                      => "inline",
         Token::If                          => "if",
         Token::Else                        => "else",
         Token::While                       => "while",

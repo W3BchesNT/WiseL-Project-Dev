@@ -1,4 +1,4 @@
-fn syscall(a: any, b: any, c: any) {
+inline syscall(a: any, b: any, c: any) {
     asm {
         mov rax, {a}
         mov rdi, {b}
@@ -8,7 +8,7 @@ fn syscall(a: any, b: any, c: any) {
     }
 }
 
-fn println(s: str) {
+inline print_str(s: str) {
     asm {
         mov rax, 1
         mov rdi, 1
@@ -18,7 +18,23 @@ fn println(s: str) {
     }
 }
 
-fn endline() {
+inline print_int(n: i32) {
+    asm {
+        sub rsp, 32
+        mov eax, {n}
+        add al, '0'
+        mov [rsp], al
+        mov byte [rsp + 1], 10
+        mov rax, 1
+        mov rdi, 1
+        mov rsi, rsp
+        mov rdx, 2
+        syscall
+        add rsp, 32
+    }
+}
+
+inline endline() {
     asm {
         sub rsp, 272
         mov rax, 0
@@ -30,7 +46,7 @@ fn endline() {
     }
 }
 
-fn Exit() {
+inline Exit() {
     asm {
         mov rax, 60
         xor rdi, rdi

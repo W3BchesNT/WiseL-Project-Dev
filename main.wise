@@ -8,16 +8,21 @@ let str_by: str = "Bye, World!"
 
 let a: i32 = 10
 
+fn add(a: i32, b: i32) {
+    return a + b
+}
+
 fn main() {
     @target="Windows" {
         WindowsShadowSpace()
     }
-    println(str_new)
+    let mo: i32 = add(2, 3)
+    print_int(mo)
+    print_str(str_new)
     if (a > 1) {
-        println("Hello, World!")
+        print_str("Hello, World!")
     } else {
-        println("Bye, World!")
+        print_str("Bye, World!")
     }
-    endline()
     Exit()
 }

@@ -18,7 +18,7 @@ pub enum Token {
     WholeNumber(String), FloatNumber(String),
 
     // === 2. Keywords: Declarations & Modifiers ===
-    Let, Mut, Static, Func,
+    Let, Mut, Static, Func, Inline,
 
     // === 3. Keywords: Control Flow === 
     If, Else, While, Break, Return, Switch, Case, Match,
@@ -49,6 +49,7 @@ fn identify_char_sequence(word: &str) -> Token {
         "false"  => Token::Bool(false),
 
         "let"    => Token::Let,
+        "inline" => Token::Inline,
         "mut"    => Token::Mut,
         "static" => Token::Static,
         "fn" | "fun" | "func" | "function"

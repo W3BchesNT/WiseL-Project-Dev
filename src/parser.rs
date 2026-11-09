@@ -29,6 +29,10 @@ pub enum Expr {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+    Call {
+        name: String,
+        args: Vec<Expr>,
+    },
 }
 
 #[allow(dead_code)]
@@ -90,6 +94,7 @@ pub enum ASTNode {
         name: String,
         params: Vec<(String, String)>,
         body: Vec<Stmt>,
+        is_inline: bool,
     },
     TargetBlock {
         target: String,
@@ -417,6 +422,51 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                     name: func_name,
                     params,
                     body,
+                    is_inline: false,
+                });
+            },
+
+            Token::Inline => {
+                let func_name = expect_ident(&mut iter, "function name after 'inline'");
+                let mut params: Vec<(String, String)> = Vec::new();
+
+                if let Some(Token::LParen) = iter.peek() {
+                    iter.next();
+                    let mut depth = 1;
+                    let mut cur_name: Option<String> = None;
+                    let mut cur_type: Option<String> = None;
+                    while let Some(inner) = iter.next() {
+                        match inner {
+                            Token::LParen => { depth += 1 },
+                            Token::RParen => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    if let Some(n) = cur_name.take() {
+                                        let t = cur_type.take().unwrap_or_else(|| "any".to_string());
+                                        params.push((n, t));
+                                    }
+                                    break;
+                                }
+                            },
+                            Token::Comma => if let Some(n) = cur_name.take() {
+                                let t = cur_type.take().unwrap_or_else(|| "any".to_string());
+                                params.push((n, t));
+                            },
+                            Token::Identifier(identifier_value) => {
+                                if cur_name.is_none() { cur_name = Some(identifier_value.clone()) }
+                                else if cur_type.is_none() { cur_type = Some(identifier_value.clone()) }
+                            },
+                            _ => {},
+                        }
+                    }
+                }
+
+                let body = parse_stmts(&mut iter);
+                statements.push(ASTNode::Func {
+                    name: func_name,
+                    params,
+                    body,
+                    is_inline: true,
                 });
             },
 

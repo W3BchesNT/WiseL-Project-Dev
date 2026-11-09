@@ -57,7 +57,20 @@ pub fn parse_value(
             // TODO: parse the negative sign before the number
             Expr::IntegerNumber(val)
         }
-        Some(Token::Identifier(value))       => Expr::Ident(value.clone()),
+        Some(Token::Identifier(value)) => {
+            if matches!(iter.peek(), Some(Token::LParen)) {
+                iter.next();
+                let mut args = Vec::new();
+                while let Some(t) = iter.peek() {
+                    if matches!(t, Token::RParen) { iter.next(); break; }
+                    if matches!(t, Token::Comma) { iter.next(); continue; }
+                    args.push(parse_expr(iter));
+                }
+                Expr::Call { name: value.clone(), args }
+            } else {
+                Expr::Ident(value.clone())
+            }
+        }
         Some(Token::StringLiteral(value, _)) => Expr::String(value.clone()),
 
         other => panic!(

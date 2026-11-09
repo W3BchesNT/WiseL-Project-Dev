@@ -20,22 +20,61 @@ data_block
     WSTR str_by, 'Bye, World!', 13, 10
     WSTR_LEN str_by
     WVAR a, i32, 10
-    WSTR arg1_str_fn_println, 'Hello, World!', 13, 10
-    WSTR_LEN arg1_str_fn_println
-    WSTR arg2_str_fn_println, 'Bye, World!', 13, 10
-    WSTR_LEN arg2_str_fn_println
+    WSTR arg1_str_fn_print_str, 'Hello, World!', 13, 10
+    WSTR_LEN arg1_str_fn_print_str
+    WSTR arg2_str_fn_print_str, 'Bye, World!', 13, 10
+    WSTR_LEN arg2_str_fn_print_str
 
 code_block
 
+fn_add:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16
+    mov [rbp - 8], ecx
+    mov [rbp - 16], edx
+    ; return a + b
+    mov rax, [rbp - 8]
+    mov rcx, [rbp - 16]
+    add rax, rcx
+    mov rax, rax
+    jmp .epilogue_0
+.epilogue_0:
+    mov rsp, rbp
+    pop rbp
+    ret
+
 start:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16
     ; WindowsShadowSpace()
-    pop rax
     sub rsp, 8
     and rsp, -16
     sub rsp, 40
-    push rax
     
-    ; println(str_new)
+    ; let mo: i32 = add(2, 3)
+    mov rcx, 2
+    mov rdx, 3
+    call fn_add
+    mov eax, eax
+    mov [rbp - 8], rax
+    ; print_int(mo)
+    sub rsp, 40
+    mov rcx, -11
+    call qword [GetStdHandle]
+    mov rcx, rax
+    lea rdx, [rsp + 32]
+    mov eax, [rbp - 8]
+    add al, '0'
+    mov [rdx], al
+    mov byte [rdx + 1], 10
+    mov r8, 2
+    lea r9, [rsp + 24]
+    mov qword [r9], 0
+    call qword [WriteConsoleA]
+    add rsp, 40
+    ; print_str(str_new)
     sub rsp, 40
     mov rcx, -11
     call qword [GetStdHandle]
@@ -53,45 +92,38 @@ start:
     setg al
     movzx rax, al
     cmp rax, 0
-    je .else_0
-    ; println("Hello, World!")
+    je .else_2
+    ; print_str("Hello, World!")
     sub rsp, 40
     mov rcx, -11
     call qword [GetStdHandle]
     mov rcx, rax
-    lea rdx, [arg1_str_fn_println]
-    mov r8, arg1_str_fn_println_len
+    lea rdx, [arg1_str_fn_print_str]
+    mov r8, arg1_str_fn_print_str_len
     lea r9, [rsp+32]
     mov qword [rsp+32], 0
     call qword [WriteConsoleA]
     add rsp, 40
-    jmp .end_1
-.else_0:
-    ; println("Bye, World!")
+    jmp .end_3
+.else_2:
+    ; print_str("Bye, World!")
     sub rsp, 40
     mov rcx, -11
     call qword [GetStdHandle]
     mov rcx, rax
-    lea rdx, [arg2_str_fn_println]
-    mov r8, arg2_str_fn_println_len
+    lea rdx, [arg2_str_fn_print_str]
+    mov r8, arg2_str_fn_print_str_len
     lea r9, [rsp+32]
     mov qword [rsp+32], 0
     call qword [WriteConsoleA]
     add rsp, 40
-.end_1:
-    ; endline()
-    sub rsp, 312
-    mov rcx, -10
-    call qword [GetStdHandle]
-    mov rcx, rax
-    lea rdx, [rsp+40]
-    mov r8, 255
-    lea r9, [rsp+296]
-    mov qword [r9], 0
-    call qword [ReadConsoleA]
-    add rsp, 312
+.end_3:
     ; Exit()
     invoke ExitProcess, 0
+.epilogue_1:
+    mov rsp, rbp
+    pop rbp
+    ret
 
 import_block
     library kernel32, 'KERNEL32.DLL'
