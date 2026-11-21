@@ -1,0 +1,30 @@
+Target "Windows"
+
+@target="Windows" {
+    UseLib "library/windows/winlib.wlib"
+}
+@target="Linux" {
+    UseLib "library/linux/unilib.wlib"
+}
+
+let a: i32 = 10
+let b: i32 = 20
+let c: str = "Hello, World!"
+let hello_msg: str = "Hello, WiseL!"
+let bytesWritten: i32 = 0
+
+fn main() {
+    @target="Windows" {
+        WindowsShadowSpace()
+        let hStdOut: any = GetStdHandle(11)
+        asm {
+            mov [hStdOut], rax
+        }
+        WriteConsoleA(hStdOut, hello_msg, hello_msg_len, bytesWritten)
+        ExitProcess()
+    }
+    @target="Linux" {
+        syscall(1, 1, hello_msg, hello_msg_len)
+        Exit()
+    }
+}

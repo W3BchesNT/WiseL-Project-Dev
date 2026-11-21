@@ -1,6 +1,5 @@
 @data {
     WVAR hStdOut, i64, ?
-    WVAR bytesWritten, i32, ?
     readln_buf rb 256
     readln_count dd 0
     newline_buf db 13, 10
