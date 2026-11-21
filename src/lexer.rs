@@ -12,9 +12,7 @@ use crate::lexer_helpers::{
 pub enum Token {
     // === 1. Literals & Identifiers (Data) ===
     Identifier(String), Bool(bool), StringLiteral(String, char),
-    // BTW I named this as "WholeNumber" instead of "Integer"
-    // since we don't detect negative numbers here. We emit a negative sign and a number,
-    // then the parser handles the negative numbers
+
     WholeNumber(String), FloatNumber(String),
 
     // === 2. Keywords: Declarations & Modifiers ===
@@ -114,7 +112,6 @@ fn identify_double_operator(chars: &mut Peekable<CharIndices>, current_char: cha
             Token::Exponent
         },
         ('*', '=') => { chars.next(); Token::StarAssign },
-        // No C-styled pointers, I guess?
         ('*', _)   => Token::Star,
         ('/', '=') => { chars.next(); Token::DivAssign },
         ('/', _)   => Token::Div,

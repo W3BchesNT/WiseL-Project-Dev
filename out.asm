@@ -1,51 +1,35 @@
 include 'kernel/FASM/fasmg/extension/format.inc'
 include 'kernel/FASM/fasmg/extension/wir_ll.inc'
 
-set_build X64, Windows, Console
+set_build X64, Linux, Console
 
 entry start
 
-include "win64w.inc"
-
 data_block
-    WVAR hStdOut, i64, ?
-    WVAR bytesWritten, i32, ?
-
-    WSTR arg1_str_fn_print_str, 'Hello, World!', 13, 10
-    WSTR_LEN arg1_str_fn_print_str
+    WVAR a, i32, 10
+    WVAR b, i32, 20
+    WSTR c, 'Hello, World!', 0
+    WSTR_LEN c
+    WSTR hello_msg, 'Hello, WiseL!', 0
+    WSTR_LEN hello_msg
 
 code_block
-
 start:
     push rbp
     mov rbp, rsp
-    ; WindowsShadowSpace()
-    sub rsp, 8
-    and rsp, -16
-    sub rsp, 40
-    
-    ; print_str("Hello, World!")
-    sub rsp, 40
-    mov rcx, -11
-    call qword [GetStdHandle]
-    mov rcx, rax
-    lea rdx, [arg1_str_fn_print_str]
-    mov r8, arg1_str_fn_print_str_len
-    lea r9, [rsp+32]
-    mov qword [rsp+32], 0
-    call qword [WriteConsoleA]
-    add rsp, 40
+    ; syscall(1, 1, hello_msg, hello_msg_len)
+    mov rax, 1
+    mov rdi, 1
+    lea rsi, [hello_msg]
+    mov rdx, hello_msg_len
+    syscall
     ; Exit()
-    invoke ExitProcess, 0
+    mov rax, 60
+    xor rdi, rdi
+    syscall
+    
 .epilogue_0:
     mov rsp, rbp
     pop rbp
     ret
 
-import_block
-    library kernel32, 'KERNEL32.DLL'
-    import kernel32, \
-        GetStdHandle, 'GetStdHandle', \
-        WriteConsoleA, 'WriteConsoleA', \
-        ExitProcess, 'ExitProcess', \
-        ReadConsoleA, 'ReadConsoleA'

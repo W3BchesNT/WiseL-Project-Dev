@@ -1,7 +1,8 @@
 use crate::parser::{ASTNode, Expr};
 use std::collections::HashMap;
 
-// RU: Inline-Функция: тело содержит сырой ASM
+// [CTX] RU: Inline-Функция: тело содержит сырой ASM
+// inline [fn_name] () { body }
 #[derive(Debug, Clone)]
 struct InlineFunc {
     name: String,
@@ -9,7 +10,7 @@ struct InlineFunc {
     body: Vec<crate::parser::Stmt>,
 }
 
-// RU: Платформа, ОС
+// [CTX] RU: Платформа, ОС
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TargetPlatform {
@@ -17,22 +18,22 @@ pub enum TargetPlatform {
     Linux,
 }
 
-// RU: Локальные переменные
+// [CTX] RU: Локальные переменные
 #[derive(Debug, Clone)]
 struct LocalVar {
     offset: usize,
     ty: String,
 }
 
-// RU: Строковой литерал
+// [CTX] RU: Строковой литерал
 #[derive(Default)]
 struct StringLiterals {
     literals: Vec<(String, String)>,
     counters: HashMap<String, usize>,
 }
 
+// [CTX] RU: Интеграция литерала для функции: arg{number}_{type}_fn_{fn_name}
 impl StringLiterals {
-    // RU: Интеграция литерала для функции: arg{number}_{type}_fn_{fn_name}
     fn intern(&mut self, func_name: &str, content: &str) -> String {
         let counter = self.counters.entry(func_name.to_string()).or_insert(0);
         *counter += 1;
@@ -43,7 +44,7 @@ impl StringLiterals {
     }
 }
 
-// RU: Контекст кодогенерации
+// [CTX] RU: Контекст кодогенерации
 struct Ctx<'a> {
     asm: &'a mut String,
     local_vars: HashMap<String, LocalVar>,
@@ -59,29 +60,29 @@ struct Ctx<'a> {
 }
 
 impl<'a> Ctx<'a> {
-    // RU: Свежая метка: .{prefix}_{N}, инкремент счётчика
+    // [CTX] RU: Свежая метка: .{prefix}_{N}, инкремент счётчика
     fn new_label(&mut self, prefix: &str) -> String {
         let label = format!(".{}_{}", prefix, self.label_counter);
         self.label_counter += 1;
         label
     }
 
-    // RU: Строка кода с отступом 4 пробела
+    // [CTX] RU: Строка кода с отступом 4 пробела
     fn line(&mut self, s: &str) {
         self.asm.push_str(&format!("    {}\n", s));
     }
 
-    // RU: Метка без отступа
+    // [CTX] RU: Метка без отступа
     fn label(&mut self, name: &str) {
         self.asm.push_str(&format!("{}:\n", name));
     }
 
-    // RU: Сырой текст без отступа
+    // [CTX] RU: Сырой текст без отступа
     fn raw(&mut self, s: &str) {
         self.asm.push_str(s);
     }
 
-    // RU: Определение типа переменной: локальная, затем глобальная
+    // [CTX] RU: Определение типа переменной: локальная, затем глобальная
     fn lookup_var_type(&self, name: &str) -> Option<String> {
         if let Some(lv) = self.local_vars.get(name) {
             return Some(lv.ty.clone());
@@ -93,7 +94,7 @@ impl<'a> Ctx<'a> {
     }
 }
 
-// RU: Развёртва AST: Раскрытие TargetBlock
+// [COLLECT] RU: Развёртва AST: Раскрытие TargetBlock
 fn flatten_ast(ast: &[ASTNode], current_platform: TargetPlatform) -> Vec<ASTNode> {
     let mut result = Vec::new();
     for node in ast {
@@ -116,16 +117,28 @@ fn flatten_ast(ast: &[ASTNode], current_platform: TargetPlatform) -> Vec<ASTNode
     result
 }
 
+// [COLLECT] RU: Поиск inline-функции по имени
 fn find_inline_func<'a>(name: &str, inline_funcs: &'a [InlineFunc]) -> Option<&'a InlineFunc> {
     inline_funcs.iter().find(|f| f.name == name)
 }
 
-// RU: Приведение аргумента вызова к ASM-Операнду с проверкой типа параметра.
+// [EXPR] RU: Приведение аргумента вызова к ASM-Операнду с проверкой типа параметра.
 fn resolve_arg(ctx: &mut Ctx, arg: &Expr, param_ty: &str, func_name: &str) -> String {
     match (param_ty, arg) {
+        ("any", Expr::Ident(name)) => name.clone(),
+        ("any", Expr::String(s)) => format!("\"{}\"", s),
+        ("any", Expr::IntegerNumber(n)) => n.to_string(),
+        ("any", other) => panic!("[ERROR.CODEGEN]: unsupported any arg: {:?}", other),
+
         ("str", Expr::Ident(name)) => {
             match ctx.lookup_var_type(name) {
-                Some(ty) if ty == "str" => name.clone(),
+                Some(ty) if ty == "str" => {
+                    if let Some(lv) = ctx.local_vars.get(name) {
+                        format!("[rbp - {}]", lv.offset + 8)
+                    } else {
+                        name.clone()
+                    }
+                }
                 Some(ty) => panic!(
                     "[ERROR.CODEGEN]: variable `{}` has type `{}`, expected `str`",
                     name, ty
@@ -167,11 +180,11 @@ fn resolve_arg(ctx: &mut Ctx, arg: &Expr, param_ty: &str, func_name: &str) -> St
             other
         ),
 
-        (_, other) => expr_to_asm_val(other),
+        (_, other) => panic!("[ERROR.CODEGEN]: unsupported argument type: {:?}", other),
     }
 }
 
-// RU: Загружаем выражение в целевой регистр (rax, rcx, ...).
+// [EXPR] RU: Загружаем выражение в целевой регистр (rax, rcx, ...).
 fn emit_arg_to_reg(ctx: &mut Ctx, target_reg: &str, arg: &Expr) {
     match arg {
         Expr::Binary { op, left, right } => {
@@ -191,7 +204,7 @@ fn emit_arg_to_reg(ctx: &mut Ctx, target_reg: &str, arg: &Expr) {
             ctx.line(&format!("mov {}, {}", target_reg, src));
         }
         Expr::Ident(s) => {
-            // RU:
+            // [EXPR] RU:
                 // Локальная: Загрузка из стека
                 // Глобальная: Загрузка по метке
             if let Some(lv) = ctx.local_vars.get(s) {
@@ -225,98 +238,7 @@ fn emit_arg_to_reg(ctx: &mut Ctx, target_reg: &str, arg: &Expr) {
     }
 }
 
-fn expr_to_asm_val(arg: &Expr) -> String {
-    match arg {
-        Expr::FloatNumber(_n) => "TODO".to_string(),
-        Expr::IntegerNumber(n) => n.to_string(),
-        Expr::Ident(id) => id.clone(),
-        Expr::String(s) => format!("'{}'", s),
-        Expr::Binary { .. } => "TODO".to_string(),
-        Expr::Call { .. } => "TODO".to_string(),
-    }
-}
-
-fn count_local_vars(stmts: &[crate::parser::Stmt]) -> usize {
-    stmts.iter().filter(|s| matches!(s, crate::parser::Stmt::Let { .. })).count()
-}
-
-// RU: Генератор вызовов: inline-функция
-fn emit_call(ctx: &mut Ctx, name: &str, call_args: &[Expr]) {
-    if let Some(func) = find_inline_func(name, ctx.inline_funcs) {
-        for stmt in &func.body {
-            if let crate::parser::Stmt::Let { name: _let_name, ty, value, .. } = stmt {
-                let target = if ty == "i32" { "eax" } else { "rax" };
-                emit_arg_to_reg(ctx, target, value);
-            }
-        }
-        let mut out = String::new();
-        for stmt in &func.body {
-            if let crate::parser::Stmt::Asm(raw) = stmt {
-                out.push_str(raw);
-                out.push('\n');
-            }
-        }
-        for ((pname, pty), arg) in func.params.iter().zip(call_args.iter()) {
-            let val = resolve_arg(ctx, arg, pty, func.name.as_str());
-            out = out.replace(&format!("{{{}}}", pname), &val);
-        }
-        for line in out.lines() {
-            let trimmed = line.trim();
-            if !trimmed.is_empty() {
-                ctx.line(trimmed);
-            }
-        }
-        return;
-    }
-
-    // RU: Регистры ABI для Windows, Linux
-    let arg_regs = match ctx.platform {
-        TargetPlatform::Linux => ["rdi", "rsi", "rdx", "rcx", "r8", "r9"],
-        TargetPlatform::Windows => ["rcx", "rdx", "r8", "r9", "rax", "rax"],
-    };
-
-    for (i, a) in call_args.iter().enumerate() {
-        if i >= 6 || (ctx.platform == TargetPlatform::Windows && i >= 4) {
-            break;
-        }
-        emit_arg_to_reg(ctx, arg_regs[i], a);
-    }
-
-    if ctx.user_funcs.iter().any(|f| f == name) {
-        ctx.line(&format!("call fn_{}", name));
-    } else {
-        ctx.line(&format!("call {}", name));
-    }
-}
-
-// RU: Генерация локальных let
-fn emit_let(ctx: &mut Ctx, name: &str, ty: &str, value: &Expr) {
-    if ctx.local_vars.contains_key(name) {
-        let offset = ctx.local_vars.get(name).unwrap().offset;
-        let target = if ty == "i32" { "eax" } else { "rax" };
-        emit_arg_to_reg(ctx, target, value);
-        ctx.line(&format!("mov [rbp - {}], rax", offset + 8));
-        return;
-    }
-    let offset = ctx.current_var_index * 8;
-    ctx.current_var_index += 1;
-    let target = if ty == "i32" { "eax" } else { "rax" };
-    emit_arg_to_reg(ctx, target, value);
-    ctx.local_vars.insert(name.to_string(), LocalVar {
-        offset,
-        ty: ty.to_string(),
-    });
-    ctx.line(&format!("mov [rbp - {}], rax", offset + 8));
-}
-
-fn emit_return(ctx: &mut Ctx, value: Option<&Expr>) {
-    if let Some(v) = value {
-        emit_arg_to_reg(ctx, "rax", v);
-    }
-    ctx.line(&format!("jmp {}", ctx.epilogue_label));
-}
-
-// RU: Генарато бенарных операций:
+// [EXPR] RU: Генарато бенарных операций:
 fn emit_binary(ctx: &mut Ctx, op: &crate::parser::BinaryOp, left: &Expr, right: &Expr) {
     emit_arg_to_reg(ctx, "rax", left);
     emit_arg_to_reg(ctx, "rcx", right);
@@ -369,7 +291,115 @@ fn emit_binary(ctx: &mut Ctx, op: &crate::parser::BinaryOp, left: &Expr, right: 
     }
 }
 
-// RU: Генератор if/else
+// [STMT] RU: Генератор вызовов: inline-функция
+fn emit_call(ctx: &mut Ctx, name: &str, call_args: &[Expr]) {
+    if let Some(func) = find_inline_func(name, ctx.inline_funcs) {
+        for stmt in &func.body {
+            if let crate::parser::Stmt::Let { name: _let_name, ty, value, .. } = stmt {
+                let target = if ty == "i32" { "eax" } else { "rax" };
+                emit_arg_to_reg(ctx, target, value);
+            }
+        }
+        let mut out = String::new();
+        for stmt in &func.body {
+            if let crate::parser::Stmt::Asm(raw) = stmt {
+                out.push_str(raw);
+                out.push('\n');
+            }
+        }
+        for ((pname, pty), arg) in func.params.iter().zip(call_args.iter()) {
+            let val = resolve_arg(ctx, arg, pty, func.name.as_str());
+            let is_local = pty == "str" && matches!(arg, Expr::Ident(_));
+            if is_local {
+                if let Expr::Ident(name) = arg {
+                    if let Some(lv) = ctx.local_vars.get(name) {
+                        let addr_offset = lv.offset + 8;
+                        let len_offset = lv.offset + 16;
+                        out = out.replace(
+                            &format!("lea rsi, [{}]", val),
+                            &format!("mov rsi, [rbp - {}]", addr_offset),
+                        );
+                        out = out.replace(
+                            &format!("lea rdx, [{}]", val),
+                            &format!("mov rdx, [rbp - {}]", addr_offset),
+                        );
+                        out = out.replace(
+                            &format!("{{{}}}_len", pname),
+                            &format!("[rbp - {}]", len_offset),
+                        );
+                    }
+                }
+            }
+            out = out.replace(&format!("{{{}}}", pname), &val);
+        }
+        for line in out.lines() {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() {
+                ctx.line(trimmed);
+            }
+        }
+        return;
+    }
+
+    // [STMT] RU: Регистры ABI для Windows, Linux
+    let arg_regs = match ctx.platform {
+        TargetPlatform::Linux => ["rdi", "rsi", "rdx", "rcx", "r8", "r9"],
+        TargetPlatform::Windows => ["rcx", "rdx", "r8", "r9", "rax", "rax"],
+    };
+
+    for (i, a) in call_args.iter().enumerate() {
+        if i >= 6 || (ctx.platform == TargetPlatform::Windows && i >= 4) {
+            break;
+        }
+        emit_arg_to_reg(ctx, arg_regs[i], a);
+    }
+
+    if ctx.user_funcs.iter().any(|f| f == name) {
+        ctx.line(&format!("call fn_{}", name));
+    } else {
+        ctx.line(&format!("call {}", name));
+    }
+}
+
+// [STMT] RU: Генерация локальных let
+fn emit_let(ctx: &mut Ctx, name: &str, ty: &str, value: &Expr) {
+    if ctx.local_vars.contains_key(name) {
+        let offset = ctx.local_vars.get(name).unwrap().offset;
+        let target = if ty == "i32" { "eax" } else { "rax" };
+        emit_arg_to_reg(ctx, target, value);
+        ctx.line(&format!("mov [rbp - {}], rax", offset + 8));
+        if ty == "str" {
+            ctx.line(&format!("mov [rbp - {}], rdx", offset + 16));
+        }
+        return;
+    }
+    let offset = ctx.current_var_index * 8;
+    if ty == "str" {
+        ctx.current_var_index += 2;
+    } else {
+        ctx.current_var_index += 1;
+    }
+    let target = if ty == "i32" { "eax" } else { "rax" };
+    emit_arg_to_reg(ctx, target, value);
+    ctx.local_vars.insert(name.to_string(), LocalVar {
+        offset,
+        ty: ty.to_string(),
+    });
+    ctx.line(&format!("mov [rbp - {}], rax", offset + 8));
+    if ty == "str" {
+        ctx.line(&format!("mov [rbp - {}], rdx", offset + 16));
+    }
+}
+
+// [STMT] RU: Генератор return
+fn emit_return(ctx: &mut Ctx, value: Option<&Expr>) {
+    if let Some(v) = value {
+        emit_arg_to_reg(ctx, "rax", v);
+    }
+    ctx.line(&format!("jmp {}", ctx.epilogue_label));
+}
+
+// [CONTROL] RU: Генератор if/else
 fn emit_if(
     ctx: &mut Ctx,
     condition: &Expr,
@@ -406,7 +436,7 @@ fn emit_if(
     ctx.label(&end_label);
 }
 
-// RU: Генератор циклов while
+// [CONTROL] RU: Генератор циклов while
 fn emit_while(ctx: &mut Ctx, condition: &Expr, body: &[crate::parser::Stmt]) {
     let start_label = ctx.new_label("while_start");
     let end_label = ctx.new_label("while_end");
@@ -428,6 +458,7 @@ fn emit_while(ctx: &mut Ctx, condition: &Expr, body: &[crate::parser::Stmt]) {
     ctx.label(&end_label);
 }
 
+// [SRC_MAP] RU: Восстановление исходного кода из Expr для комментариев
 fn expr_src(e: &crate::parser::Expr) -> String {
     use crate::parser::Expr;
     match e {
@@ -461,6 +492,7 @@ fn expr_src(e: &crate::parser::Expr) -> String {
     }
 }
 
+// [SRC_MAP] RU: Восстановление исходного кода из Stmt для комментариев
 fn stmt_src(stmt: &crate::parser::Stmt) -> String {
     use crate::parser::Stmt;
     match stmt {
@@ -482,6 +514,7 @@ fn stmt_src(stmt: &crate::parser::Stmt) -> String {
     }
 }
 
+// [STMT] RU: Диспетчер операторов
 fn emit_stmt(ctx: &mut Ctx, stmt: &crate::parser::Stmt) {
     let s = stmt_src(stmt);
     if !s.is_empty() {
@@ -529,7 +562,12 @@ fn emit_stmt(ctx: &mut Ctx, stmt: &crate::parser::Stmt) {
     }
 }
 
-// RU: Генератор тела функции
+// [FUNC] RU: Подсчёт количества локальных переменных для выделения стека
+fn count_local_vars(stmts: &[crate::parser::Stmt]) -> usize {
+    stmts.iter().filter(|s| matches!(s, crate::parser::Stmt::Let { .. })).count()
+}
+
+// [FUNC] RU: Генератор тела функции
 fn push_func_body(ctx: &mut Ctx, stmts: &[crate::parser::Stmt], params: &[(String, String)]) {
     ctx.local_vars.clear();
     ctx.current_var_index = 0;
@@ -577,7 +615,7 @@ fn push_func_body(ctx: &mut Ctx, stmts: &[crate::parser::Stmt], params: &[(Strin
     ctx.raw("    ret\n");
 }
 
-// RU: Генератор функций: main -> entry; пользовательские через fn_{name}
+// [FUNC] RU: Генератор функций: main -> entry; пользовательские через fn_{name}
 fn emit_all_funcs(ctx: &mut Ctx, ast: &[ASTNode]) {
     for node in ast {
         if let ASTNode::Func { name, body, params, is_inline } = node {
@@ -599,6 +637,7 @@ fn emit_all_funcs(ctx: &mut Ctx, ast: &[ASTNode]) {
     }
 }
 
+// [DATA] RU: Генератор include директив
 fn emit_includes(asm: &mut String, ast: &[ASTNode]) {
     for node in ast {
         if let ASTNode::IncludeInc(inc) = node {
@@ -607,16 +646,12 @@ fn emit_includes(asm: &mut String, ast: &[ASTNode]) {
     }
 }
 
-// RU: Генератор data_block:
+// [DATA] RU: Генератор data_block:
 fn emit_data(asm: &mut String, ast: &[ASTNode], globals: &mut HashMap<String, String>, strings: &StringLiterals) {
-    let mut has_data = false;
     for node in ast {
         match node {
+            // @data {}
             ASTNode::Data(content) => {
-                if !has_data {
-                    asm.push_str("data_block\n");
-                    has_data = true;
-                }
                 for line in content.lines() {
                     if !line.trim().is_empty() {
                         asm.push_str(&format!("    {}\n", line.trim()));
@@ -624,22 +659,16 @@ fn emit_data(asm: &mut String, ast: &[ASTNode], globals: &mut HashMap<String, St
                 }
                 asm.push('\n');
             }
+            // let [name]: [ty] = [value]
             ASTNode::Let { name, ty, value, .. } => {
-                if !has_data {
-                    asm.push_str("data_block\n");
-                    has_data = true;
-                }
                 globals.insert(name.clone(), ty.clone());
                 match (ty.as_str(), value) {
                     ("string" | "str", Expr::String(val)) => {
-                        asm.push_str(&format!("    WSTR {}, '{}', 13, 10\n", name, val));
+                        asm.push_str(&format!("    WSTR {}, '{}', 0\n", name, val));
                         asm.push_str(&format!("    WSTR_LEN {}\n", name));
                     }
-                    ("i32", Expr::IntegerNumber(n)) => {
-                        asm.push_str(&format!("    WVAR {}, i32, {}\n", name, n));
-                    }
-                    ("i64", Expr::IntegerNumber(n)) => {
-                        asm.push_str(&format!("    WVAR {}, i64, {}\n", name, n));
+                    ("i64" | "i32", Expr::IntegerNumber(n)) => {
+                        asm.push_str(&format!("    WVAR {}, {}, {}\n", name, ty, n));
                     }
                     _ => {}
                 }
@@ -648,21 +677,15 @@ fn emit_data(asm: &mut String, ast: &[ASTNode], globals: &mut HashMap<String, St
         }
     }
 
+    // [GEN] RU: Генерация строго литерала func_name("hello") -> 
+    // WSTR arg{n}_{type}_fn_{fn_name} + WSTR_LEN {name}
     for (name, content) in &strings.literals {
-        if !has_data {
-            asm.push_str("data_block\n");
-            has_data = true;
-        }
-        asm.push_str(&format!("    WSTR {}, '{}', 13, 10\n", name, content));
+        asm.push_str(&format!("    WSTR {}, '{}', 0\n", name, content));
         asm.push_str(&format!("    WSTR_LEN {}\n", name));
-    }
-
-    if has_data {
-        asm.push('\n');
     }
 }
 
-// RU: Генератор import_block
+// [DATA] RU: Генератор import_block
 fn emit_imports(asm: &mut String, ast: &[ASTNode]) {
     asm.push_str("import_block\n");
     let mut merged: Vec<(&String, Vec<&String>)> = Vec::new();
@@ -705,7 +728,7 @@ fn emit_imports(asm: &mut String, ast: &[ASTNode]) {
     }
 }
 
-// RU: Точка входа кодогенерации: платформа, развёртка AST, собирает функции/глобалы/литерары, склеивает, вывод, out.asm
+// [GEN] RU: Точка входа кодогенерации: платформа, развёртка AST, собирает функции/глобалы/литерары, склеивает, вывод, out.asm
 pub fn generate(raw_ast: &[ASTNode]) -> String {
     let target = raw_ast
         .iter()
@@ -769,6 +792,7 @@ pub fn generate(raw_ast: &[ASTNode]) -> String {
         emit_all_funcs(&mut ctx, &ast);
     }
 
+    // [GEN] RU: Финальная склейка out.asm
     let mut asm = String::new();
     asm.push_str("include 'kernel/FASM/fasmg/extension/format.inc'\n");
     asm.push_str("include 'kernel/FASM/fasmg/extension/wir_ll.inc'\n\n");
@@ -781,9 +805,10 @@ pub fn generate(raw_ast: &[ASTNode]) -> String {
     asm.push_str("entry start\n\n");
 
     emit_includes(&mut asm, &ast);
+    asm.push_str("data_block\n");
     emit_data(&mut asm, &ast, &mut globals, &strings);
 
-    asm.push_str("code_block\n\n");
+    asm.push_str("\ncode_block\n");
     asm.push_str(&code);
     asm.push('\n');
 

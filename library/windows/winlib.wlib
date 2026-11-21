@@ -1,0 +1,50 @@
+@data {
+    WVAR hStdOut, i64, ?
+    WVAR bytesWritten, i32, ?
+    readln_buf rb 256
+    readln_count dd 0
+    newline_buf db 13, 10
+}
+
+@include.inc {
+    "win64w.inc"
+}
+
+@library kernel32 {
+    GetStdHandle
+    WriteConsoleA
+    ExitProcess
+    ReadConsoleA
+}
+
+inline WriteConsoleA(stdout: any, arg1: any, arg2: any, arg3: any){
+    asm {
+        invoke WriteConsoleA, [{stdout}], {arg1}, {arg2}, {arg3}, 0
+    }
+}
+
+inline GetStdHandle(n: any) {
+    asm {
+        invoke GetStdHandle, -{n}
+    }
+}
+
+inline GetStdHandleW() {
+    asm {
+        invoke GetStdHandle, -11
+        mov rax, hStdOut
+    }
+}
+
+inline ExitProcess() {
+    asm {
+        invoke ExitProcess, 0
+    }
+}
+
+inline WindowsShadowSpace() {
+    asm {
+        and rsp, -16
+        sub rsp, 48
+    }
+}

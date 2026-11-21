@@ -1,6 +1,9 @@
 @data {
     WVAR hStdOut, i64, ?
     WVAR bytesWritten, i32, ?
+    readln_buf rb 256
+    readln_count dd 0
+    newline_buf db 13, 10
 }
 
 @include.inc {
@@ -16,72 +19,129 @@
 
 inline print_str(s: str) {
     asm {
-        sub rsp, 40
-
         mov rcx, -11
         call qword [GetStdHandle]
-
         mov rcx, rax
-        lea rdx, [{s}]
+        mov rdx, {s}
         mov r8, {s}_len
-        lea r9, [rsp+32]
-
+        lea r9, [bytesWritten]
         mov qword [rsp+32], 0
         call qword [WriteConsoleA]
-        add rsp, 40
     }
 }
 
-inline print_int(n: i32) {
+inline print_readln_str() {
     asm {
-        sub rsp, 40
         mov rcx, -11
         call qword [GetStdHandle]
         mov rcx, rax
-
-        lea rdx, [rsp + 32]
-        mov eax, {n}
-        add al, '0'
-        mov [rdx], al
-        mov byte [rdx + 1], 10
-        mov r8, 2
-        lea r9, [rsp + 24]
-        mov qword [r9], 0
-        call qword [WriteConsoleA]
-        add rsp, 40
-    }
-}
-
-inline WriteConsoleA(s: str, len: i32) {
-    asm {
-        sub rsp, 40
-
-        mov rcx, -11
-        call qword [GetStdHandle]
-
-        mov rcx, rax
-        lea rdx, [{s}]
-        mov r8, {len}
-        lea r9, [rsp+32]
-
+        lea rdx, [readln_buf]
+        mov r8d, [readln_count]
+        sub r8d, 2
+        lea r9, [bytesWritten]
         mov qword [rsp+32], 0
         call qword [WriteConsoleA]
-        add rsp, 40
     }
 }
+
+fn print_int(n: i32) {
+    asm {
+        push rbx
+        push rdi
+        sub rsp, 64
+
+        mov r10d, ecx
+        mov rcx, -11
+        call qword [GetStdHandle]
+        mov rbx, rax
+
+        mov eax, r10d
+        lea rdi, [rsp + 63]
+        mov ecx, 10
+    .print_int_loop:
+        xor edx, edx
+        div ecx
+        add dl, '0'
+        mov [rdi], dl
+        dec rdi
+        test eax, eax
+        jnz .print_int_loop
+        inc rdi
+
+        mov rcx, rbx
+        mov rdx, rdi
+        lea r8, [rsp + 64]
+        sub r8, rdi
+        lea r9, [bytesWritten]
+        mov qword [rsp + 32], 0
+        call qword [WriteConsoleA]
+
+        add rsp, 64
+        pop rdi
+        pop rbx
+    }
+}
+
 
 inline endline() {
     asm {
-        sub rsp, 312
+        mov rcx, -11
+        call qword [GetStdHandle]
+        mov rcx, rax
+        lea rdx, [newline_buf]
+        mov r8, 2
+        lea r9, [bytesWritten]
+        mov qword [rsp+32], 0
+        call qword [WriteConsoleA]
+    }
+}
+
+inline readln_str() {
+    asm {
+        sub rsp, 40
         mov rcx, -10
         call qword [GetStdHandle]
         mov rcx, rax
-        lea rdx, [rsp+40]
+        lea rdx, [readln_buf]
         mov r8, 255
-        lea r9, [rsp+296]
-        mov qword [r9], 0
+        lea r9, [readln_count]
+        mov qword [rsp+32], 0
         call qword [ReadConsoleA]
-        add rsp, 312
+        add rsp, 40
+        lea rax, [readln_buf]
+        mov edx, [readln_count]
+        sub rdx, 2
+    }
+}
+
+inline readln_int() {
+    asm {
+        sub rsp, 40
+        mov rcx, -10
+        call qword [GetStdHandle]
+        mov rcx, rax
+        lea rdx, [readln_buf]
+        mov r8, 255
+        lea r9, [readln_count]
+        mov qword [rsp+32], 0
+        call qword [ReadConsoleA]
+        add rsp, 40
+
+        lea rdi, [readln_buf]
+        xor rax, rax
+        xor rcx, rcx
+    .readln_int_loop:
+        movzx rcx, byte [rdi]
+        cmp rcx, '0'
+        jb .readln_int_done
+        cmp rcx, '9'
+        ja .readln_int_done
+        sub rcx, '0'
+        imul rax, 10
+        add rax, rcx
+        inc rdi
+        jmp .readln_int_loop
+    .readln_int_done:
     }
 }
 
@@ -100,18 +160,7 @@ inline Exit() {
 
 inline WindowsShadowSpace() {
     asm {
-        sub rsp, 8
         and rsp, -16
-        sub rsp, 40
-    }
-}
-
-inline DisabledWindowsShadowSpace() {
-    asm {
-        pop rax
-        sub rsp, 8
-        and rsp, -16
-        sub rsp, 40
-        push rax
+        sub rsp, 48
     }
 }

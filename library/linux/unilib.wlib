@@ -1,0 +1,17 @@
+inline syscall(a: any, b: any, c: any, d: any) {
+    asm {
+        mov rax, {a}
+        mov rdi, {b}
+        lea rsi, [{c}]
+        mov rdx, {d}
+        syscall
+    }
+}
+
+inline Exit() {
+    asm {
+        mov rax, 60
+        xor rdi, rdi
+        syscall
+    }
+}

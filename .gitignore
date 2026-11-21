@@ -1,5 +1,9 @@
 # Compiled Rust stuff
-target
+/target/*
+!/target/release/
+/target/release/*
+!/target/release/wisel.exe
+.cargo
 
 # RustRover
 .idea

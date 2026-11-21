@@ -1,0 +1,18 @@
+UseLib "library/stdlib.wlib"
+
+@APPEND[fn main] {
+	out {
+		before {}
+		after {}
+	}
+	in {
+		before {
+			@target="Windows" {
+				WindowsShadowSpace()
+			}
+		}
+		after {
+			Exit()
+		}
+	}
+}
