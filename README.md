@@ -22,12 +22,12 @@ wisel build main.wise
 ```
 
 ### Overview
-**WiseL-Project-Dev** is a lightweight, experimental programming language transpiler designed for low-level systems development. It translates custom script files into optimized FASM assembly for Windows (PE64) and Linux (ELF64).
+**WiseL-Project-Dev** is a lightweight, experimental programming language compiler designed for low-level systems development. It translates custom source files into optimized FASM assembly and compiles them into native executables for Windows (PE64) and Linux (ELF64).
 
 ### Key Features
-* **Clean & Minimal Syntax:** Designed to reduce boilerplate with a streamlined source approach.
-* **Direct FASM Integration:** Generates pure, high-performance assembly code.
-* **Modular Architecture:** Structured separation of AST parsing, code generation, and target platform handling.
+* **Cross-Platform:** x64 Windows and Linux support. OS is auto-detected or can be set via `--target`.
+* **Simple Syntax:** C/Rust-like, without unnecessary brackets or complex boilerplate.
+* **Clear Output:** Generates a readable `.asm` file and a ready-to-run executable (`.exe` or ELF).
 
 ---
 
@@ -49,9 +49,9 @@ wisel build main.wise
 ```
 
 ### Обзор
-**WiseL-Project-Dev** — это легковесный экспериментальный транслятор языка программирования, созданный для низкоуровневой системной разработки. Он преобразует исходный код в оптимизированный ассемблер FASM под Windows (PE64) и Linux (ELF64).
+**WiseL-Project-Dev** — это легковесный экспериментальный компилятор языка программирования, созданный для низкоуровневой системной разработки. Он преобразует исходный код в оптимизированный ассемблер FASM и собирает его в нативные исполняемые файлы для Windows (PE64) и Linux (ELF64).
 
 ### Основные особенности
-* **Чистый и минималистичный синтаксис:** Минимизация лишнего кода за счет централизованных конфигураций.
-* **Прямая интеграция с FASM:** Генерация чистого, высокопроизводительного ассемблерного кода.
-* **Модульная архитектура:** Четкое разделение парсинга AST, кодогенерации и работы с целевыми платформами.
+* **Кроссплатформенность:** Поддержка x64 Windows и Linux. ОС определяется автоматически или задается через `--target`.
+* **Простой синтаксис:** Похож на C/Rust, без лишних скобок и сложных конструкций.
+* **Понятный результат:** На выходе вы получаете готовый `.asm` файл и скомпилированный исполняемый файл (`.exe` или ELF).
