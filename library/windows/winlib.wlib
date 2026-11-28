@@ -1,5 +1,4 @@
 @data {
-    WVAR hStdOut, i64, ?
     readln_buf rb 256
     readln_count dd 0
     newline_buf db 13, 10
@@ -18,20 +17,13 @@
 
 inline WriteConsoleA(stdout: any, arg1: any, arg2: any, arg3: any){
     asm {
-        invoke WriteConsoleA, [{stdout}], {arg1}, {arg2}, {arg3}, 0
+        invoke WriteConsoleA, {stdout}, {arg1}, {arg2}, {arg3}, 0
     }
 }
 
 inline GetStdHandle(n: any) {
     asm {
-        invoke GetStdHandle, -{n}
-    }
-}
-
-inline GetStdHandleW() {
-    asm {
-        invoke GetStdHandle, -11
-        mov rax, hStdOut
+        invoke GetStdHandle, {n}
     }
 }
 

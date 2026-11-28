@@ -370,14 +370,37 @@ pub fn parse(tokens: &[Token]) -> Vec<ASTNode> {
                     other => panic!("[ERROR.PARSER]: expected library path after 'UseLib', got {:?}",other),
                 };
 
-                match std::fs::read_to_string(&lib_path) {
-                    Ok(lib_source) => {
+                let resolved = if std::path::Path::new(&lib_path).exists() {
+                    Some(std::path::PathBuf::from(&lib_path))
+                } else {
+                    let mut current = std::env::current_exe().ok()
+                        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+                        .unwrap_or_default();
+                    let mut found = None;
+                    loop {
+                        let candidate = current.join(&lib_path);
+                        if candidate.exists() { found = Some(candidate.clone()); break }
+                        let fasmg_marker = if cfg!(target_os = "windows") {
+                            "kernel/FASM/fasmg/fasmg.exe"
+                        } else {
+                            "kernel/FASM/fasmg/fasmg"
+                        };
+                        if candidate.parent().map(|p| p.join(fasmg_marker).exists()).unwrap_or(false) {
+                            found = Some(candidate);
+                            break;
+                        }
+                        if !current.pop() { break }
+                    }
+                    found
+                };
+                match resolved.and_then(|p| std::fs::read_to_string(p).ok()) {
+                    Some(lib_source) => {
                         let sub_tokens = tokenize(&lib_source);
                         let sub_nodes = parse(&sub_tokens);
                         statements.extend(sub_nodes);
                     }
-                    Err(err) => {
-                        eprintln!("[ERROR] Cannot read library '{lib_path}': {err}");
+                    None => {
+                        eprintln!("[ERROR] Cannot read library '{lib_path}'");
                     }
                 }
             },

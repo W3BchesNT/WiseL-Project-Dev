@@ -123,9 +123,24 @@ fn find_inline_func<'a>(name: &str, inline_funcs: &'a [InlineFunc]) -> Option<&'
 }
 
 // [EXPR] RU: Приведение аргумента вызова к ASM-Операнду с проверкой типа параметра.
+fn size_prefix(ty: &str) -> &'static str {
+    match ty {
+        "i32" | "u32" | "f32" => "dword",
+        _ => "qword",
+    }
+}
+
+// [EXPR] RU: Приведение аргумента вызова к ASM-Операнду с проверкой типа параметра.
 fn resolve_arg(ctx: &mut Ctx, arg: &Expr, param_ty: &str, func_name: &str) -> String {
+
     match (param_ty, arg) {
-        ("any", Expr::Ident(name)) => name.clone(),
+        ("any", Expr::Ident(name)) => {
+            if let Some(lv) = ctx.local_vars.get(name) {
+                format!("{} [rbp - {}]", size_prefix(&lv.ty), lv.offset + 8)
+            } else {
+                name.clone()
+            }
+        }
         ("any", Expr::String(s)) => format!("\"{}\"", s),
         ("any", Expr::IntegerNumber(n)) => n.to_string(),
         ("any", other) => panic!("[ERROR.CODEGEN]: unsupported any arg: {:?}", other),
@@ -160,9 +175,9 @@ fn resolve_arg(ctx: &mut Ctx, arg: &Expr, param_ty: &str, func_name: &str) -> St
             match ctx.lookup_var_type(name) {
                 Some(ty) if ty == "i32" => {
                     if let Some(lv) = ctx.local_vars.get(name) {
-                        format!("[rbp - {}]", lv.offset + 8)
+                        format!("dword [rbp - {}]", lv.offset + 8)
                     } else {
-                        format!("[{}]", name)
+                        format!("dword [{}]", name)
                     }
                 }
                 Some(ty) => panic!(
@@ -209,17 +224,30 @@ fn emit_arg_to_reg(ctx: &mut Ctx, target_reg: &str, arg: &Expr) {
                 // Глобальная: Загрузка по метке
             if let Some(lv) = ctx.local_vars.get(s) {
                 let offset = lv.offset;
-                let reg_64 = match target_reg {
-                    "eax" | "rax" => "rax",
-                    "edi" | "rdi" => "rdi",
-                    "esi" | "rsi" => "rsi",
-                    "edx" | "rdx" => "rdx",
-                    "ecx" | "rcx" => "rcx",
-                    "r8d" | "r8" => "r8",
-                    "r9d" | "r9" => "r9",
-                    _ => target_reg,
+                let reg = if lv.ty == "i32" {
+                    match target_reg {
+                        "rax" | "eax" => "eax",
+                        "rdi" | "edi" => "edi",
+                        "rsi" | "esi" => "esi",
+                        "rdx" | "edx" => "edx",
+                        "rcx" | "ecx" => "ecx",
+                        "r8" | "r8d" => "r8d",
+                        "r9" | "r9d" => "r9d",
+                        _ => target_reg,
+                    }
+                } else {
+                    match target_reg {
+                        "eax" | "rax" => "rax",
+                        "edi" | "rdi" => "rdi",
+                        "esi" | "rsi" => "rsi",
+                        "edx" | "rdx" => "rdx",
+                        "ecx" | "rcx" => "rcx",
+                        "r8d" | "r8" => "r8",
+                        "r9d" | "r9" => "r9",
+                        _ => target_reg,
+                    }
                 };
-                ctx.line(&format!("mov {}, [rbp - {}]", reg_64, offset + 8));
+                ctx.line(&format!("mov {}, [rbp - {}]", reg, offset + 8));
             } else {
                 let reg_32 = match target_reg {
                     "rax" | "eax" => "eax",
@@ -365,11 +393,19 @@ fn emit_call(ctx: &mut Ctx, name: &str, call_args: &[Expr]) {
 fn emit_let(ctx: &mut Ctx, name: &str, ty: &str, value: &Expr) {
     if ctx.local_vars.contains_key(name) {
         let offset = ctx.local_vars.get(name).unwrap().offset;
-        let target = if ty == "i32" { "eax" } else { "rax" };
-        emit_arg_to_reg(ctx, target, value);
-        ctx.line(&format!("mov [rbp - {}], rax", offset + 8));
         if ty == "str" {
+            if let Expr::String(s) = value {
+                let lit = ctx.strings.intern("main", s);
+                ctx.line(&format!("lea rax, [{}]", lit));
+            } else {
+                emit_arg_to_reg(ctx, "rax", value);
+            }
+            ctx.line(&format!("mov [rbp - {}], rax", offset + 8));
             ctx.line(&format!("mov [rbp - {}], rdx", offset + 16));
+        } else {
+            let target = if ty == "i32" { "eax" } else { "rax" };
+            emit_arg_to_reg(ctx, target, value);
+            ctx.line(&format!("mov [rbp - {}], rax", offset + 8));
         }
         return;
     }
@@ -379,8 +415,18 @@ fn emit_let(ctx: &mut Ctx, name: &str, ty: &str, value: &Expr) {
     } else {
         ctx.current_var_index += 1;
     }
-    let target = if ty == "i32" { "eax" } else { "rax" };
-    emit_arg_to_reg(ctx, target, value);
+    if ty == "str" {
+        match value {
+            Expr::String(s) => {
+                let lit = ctx.strings.intern("main", s);
+                ctx.line(&format!("lea rax, [{}]", lit));
+            }
+            _ => emit_arg_to_reg(ctx, "rax", value),
+        }
+    } else {
+        let target = if ty == "i32" { "eax" } else { "rax" };
+        emit_arg_to_reg(ctx, target, value);
+    }
     ctx.local_vars.insert(name.to_string(), LocalVar {
         offset,
         ty: ty.to_string(),
@@ -664,7 +710,7 @@ fn emit_data(asm: &mut String, ast: &[ASTNode], globals: &mut HashMap<String, St
                 globals.insert(name.clone(), ty.clone());
                 match (ty.as_str(), value) {
                     ("string" | "str", Expr::String(val)) => {
-                        asm.push_str(&format!("    WSTR {}, '{}', 0\n", name, val));
+                        asm.push_str(&format!("    WSTR {}, '{}'\n", name, val));
                         asm.push_str(&format!("    WSTR_LEN {}\n", name));
                     }
                     ("i64" | "i32", Expr::IntegerNumber(n)) => {
@@ -729,21 +775,34 @@ fn emit_imports(asm: &mut String, ast: &[ASTNode]) {
 }
 
 // [GEN] RU: Точка входа кодогенерации: платформа, развёртка AST, собирает функции/глобалы/литерары, склеивает, вывод, out.asm
-pub fn generate(raw_ast: &[ASTNode]) -> String {
-    let target = raw_ast
-        .iter()
-        .find_map(|node| {
-            if let ASTNode::Target(t) = node {
-                Some(if t.to_lowercase().contains("linux") {
-                    TargetPlatform::Linux
+pub fn generate(raw_ast: &[ASTNode], target_override: Option<&str>) -> String {
+    let target = if let Some(t) = target_override {
+        if t.to_lowercase().contains("linux") {
+            TargetPlatform::Linux
+        } else {
+            TargetPlatform::Windows
+        }
+    } else {
+        raw_ast
+            .iter()
+            .find_map(|node| {
+                if let ASTNode::Target(t) = node {
+                    Some(if t.to_lowercase().contains("linux") {
+                        TargetPlatform::Linux
+                    } else {
+                        TargetPlatform::Windows
+                    })
                 } else {
-                    TargetPlatform::Windows
-                })
-            } else {
-                None
-            }
-        })
-        .unwrap_or(TargetPlatform::Windows);
+                    None
+                }
+            })
+            .unwrap_or({
+                #[cfg(target_os = "linux")]
+                { TargetPlatform::Linux }
+                #[cfg(not(target_os = "linux"))]
+                { TargetPlatform::Windows }
+            })
+    };
 
     let ast = flatten_ast(raw_ast, target);
 

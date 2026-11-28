@@ -9,6 +9,7 @@
 .idea
 
 # ???
-# out.asm
-# main.exe
-# wiselc.exe
+out.asm
+main.exe
+main
+wiselc.exe

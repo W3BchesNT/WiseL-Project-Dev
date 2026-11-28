@@ -25,6 +25,19 @@ fn get_infix(token: &Token) -> Option<(BinaryOp, u8, u8)> {
 
 fn parse_expr_bp(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>, min_bp: u8) -> Expr {
     let mut left = match iter.peek() {
+        Some(Token::Minus) => {
+            iter.next();
+            let rhs = parse_expr_bp(iter, 5);
+            match rhs {
+                Expr::IntegerNumber(n) => Expr::IntegerNumber(-n),
+                Expr::FloatNumber(n) => Expr::FloatNumber(-n),
+                other => Expr::Binary {
+                    op: BinaryOp::Sub,
+                    left: Box::new(Expr::IntegerNumber(0)),
+                    right: Box::new(other),
+                },
+            }
+        }
         Some(Token::LParen) => {
             iter.next();
             let inner = parse_expr_bp(iter, 0);
@@ -33,6 +46,7 @@ fn parse_expr_bp(iter: &mut std::iter::Peekable<std::slice::Iter<'_, Token>>, mi
         }
         _ => parse_value(iter),
     };
+
 
     loop {
         let (op, left_bp, right_bp) = match iter.peek() {

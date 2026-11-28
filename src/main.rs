@@ -23,13 +23,19 @@ fn get_wiselc_root() -> PathBuf {
         .expect("Executable has no parent directory")
         .to_path_buf();
 
+    let fasmg_marker = if cfg!(target_os = "windows") {
+        "kernel/FASM/fasmg/fasmg.exe"
+    } else {
+        "kernel/FASM/fasmg/fasmg"
+    };
+
     loop {
-        if current.join("fasmgc-outbuild.bat").exists() || current.join("Cargo.toml").exists() {
+        if current.join(fasmg_marker).exists() || current.join("Cargo.toml").exists() {
             return current;
         }
 
         if !current.pop() {
-            eprintln!("[ERROR] Could not find wisel root directory (missing fasmgc-outbuild.bat or Cargo.toml)");
+            eprintln!("[ERROR] Could not find wisel root directory (missing kernel/FASM/fasmg or Cargo.toml)");
             std::process::exit(1);
         }
     }
@@ -71,17 +77,9 @@ fn handle_cli(args: &[String]) -> bool {
 
         let main_wise = format!("{}/main.wise", project_name);
         
-        let starter_code = r#"Target "Windows"
-UseLib "library/stdlib.wlib"
+        let starter_code = r#"fn main() {
 
-fn main() {
-    @target="Windows" {
-        WindowsShadowSpace()
-    }
-    print_str("Hello, World!")
-    Exit()
-}
-"#;
+}"#;
         
         std::fs::write(&main_wise, starter_code).unwrap();
 
@@ -91,17 +89,18 @@ fn main() {
     }
 
     if args[1] == "run" {
-        let exe_path = std::env::current_dir().unwrap().join("main.exe");
+        let exe_name = if cfg!(target_os = "windows") { "main.exe" } else { "main" };
+        let exe_path = std::env::current_dir().unwrap().join(exe_name);
         
         if !exe_path.exists() {
-            eprintln!("[ERROR] main.exe not found. Run 'wisel build' first.");
+            eprintln!("[ERROR] {exe_name} not found. Run 'wisel build' first.");
             std::process::exit(1);
         }
 
-        println!("[*.*] Running main.exe...");
+        println!("[*.*] Running {exe_name}...");
         let status = Command::new(&exe_path)
             .status()
-            .expect("Failed to run main.exe");
+            .expect("Failed to run executable");
         
         if !status.success() {
             std::process::exit(status.code().unwrap_or(1));
@@ -112,7 +111,13 @@ fn main() {
     if args[1] == "build" || args[1] == "build-run" || args[1] == "br" {
         
         let benchmark = args.iter().any(|a| a == "--benchmark");
+        let target_override = args.iter()
+            .find_map(|a| a.strip_prefix("--target="))
+            .map(|v| v.trim_matches('"').to_string());
         let file_name = if args.len() >= 3 && !args[2].starts_with("--") { &args[2] } else { "main.wise" };
+        
+
+        
         let user_path = PathBuf::from(file_name);
         
         let absolute_path = if user_path.is_absolute() {
@@ -124,37 +129,21 @@ fn main() {
         let original_dir = std::env::current_dir().unwrap();
         let wiselc_root = get_wiselc_root();
         
-        let exe_path = original_dir.join("main.exe");
+        let exe_name = if cfg!(target_os = "windows") { "main.exe" } else { "main" };
+        let out_asm_path = original_dir.join("out.asm");
+        let main_exe_path = original_dir.join(exe_name);
+        let exe_path = main_exe_path.clone();
         let is_build_run = args[1] == "build-run" || args[1] == "br";
         let start_compile = Instant::now();
 
-        std::env::set_current_dir(&wiselc_root).unwrap();
-        
-        compile_file(absolute_path.to_str().unwrap());
+        compile_file(
+            absolute_path.to_str().unwrap(),
+            out_asm_path.to_str().unwrap(),
+            target_override.as_deref(),
+        );
         println!("[*.*] Running assembler...");
-        
-        let output = Command::new("cmd")
-            .args(["/C", "fasmgc-outbuild.bat"])
-            .output()
-            .expect("Failed to execute fasmgc-outbuild.bat");
 
-        if output.status.success() {
-            println!("[*.*] Moving artifacts to project folder...");
-            
-            let out_asm_src = wiselc_root.join("out.asm");
-            let out_asm_dst = original_dir.join("out.asm");
-            if let Err(e) = fs::copy(&out_asm_src, &out_asm_dst) {
-                eprintln!("[ERROR] Failed to copy out.asm: {}", e);
-            }
-
-            let main_exe_src = wiselc_root.join("main.exe");
-            let main_exe_dst = original_dir.join("main.exe");
-            if let Err(e) = fs::copy(&main_exe_src, &main_exe_dst) {
-                eprintln!("[ERROR] Failed to copy main.exe: {}", e);
-            }
-        }
-
-        std::env::set_current_dir(&original_dir).unwrap();
+        let output = run_fasmg(&wiselc_root, &out_asm_path, &main_exe_path);
 
         if !output.status.success() {
             println!("{}", String::from_utf8_lossy(&output.stdout));
@@ -165,20 +154,20 @@ fn main() {
 
         if benchmark {
             let elapsed = start_compile.elapsed();
-            println!("[BENCHMARK] Build time: {:.2?}", elapsed);
+            println!("\n[BENCHMARK] Build time: {:.2?}", elapsed);
         }
 
         if is_build_run {
-            println!("[*.*] Running main.exe...");
+            println!("[*.*] Running {}...", exe_name);
             
             let start_run = Instant::now();
             let status = Command::new(&exe_path)
                 .status()
-                .expect("Failed to run main.exe");
+                .expect("Failed to run executable");
             
             if benchmark {
                 let elapsed = start_run.elapsed();
-                println!("[BENCHMARK] Run time: {:.2?}", elapsed);
+                println!("\n[BENCHMARK] Run time: {:.2?}", elapsed);
             }
 
             if !status.success() {
@@ -192,7 +181,7 @@ fn main() {
     false
 }
 
-fn compile_file(path: &str) {
+fn compile_file(path: &str, out_asm_path: &str, target_override: Option<&str>) {
     let source: String = read_file(path);
     print_step(Step::READ, source.len());
 
@@ -202,12 +191,29 @@ fn compile_file(path: &str) {
     let ast: Vec<ASTNode> = parse(&tokens);
     print_step(Step::PARSED, ast.len());
 
-    let asm: String = generate(&ast);
-    if let Err(e) = fs::write("out.asm", &asm) {
-        eprintln!("[ERROR] Cannot write out.asm: {e}");
+    let asm: String = generate(&ast, target_override);
+    if let Err(e) = fs::write(out_asm_path, &asm) {
+        eprintln!("[ERROR] Cannot write {out_asm_path}: {e}");
         std::process::exit(1);
     }
     print_step(Step::GENERATED, asm.len());
+}
+
+fn run_fasmg(wiselc_root: &std::path::Path, asm_path: &std::path::Path, out_exe: &std::path::Path) -> std::process::Output {
+    let fasmg = if cfg!(target_os = "windows") {
+        wiselc_root.join("kernel/FASM/fasmg/fasmg.exe")
+    } else {
+        wiselc_root.join("kernel/FASM/fasmg/fasmg")
+    };
+    let include = wiselc_root.join("kernel/FASM/fasmg/packages/x86/include");
+
+    Command::new(&fasmg)
+        .arg(asm_path)
+        .arg(out_exe)
+        .env("INCLUDE", &include)
+        .current_dir(wiselc_root)
+        .output()
+        .expect("Failed to execute fasmg")
 }
 
 fn main() {
@@ -217,6 +223,10 @@ fn main() {
         return;
     }
 
+    let target_override = args.iter()
+        .find_map(|a| a.strip_prefix("--target="))
+        .map(|v| v.trim_matches('"').to_string());
     let path: String = get_entry_path();
-    compile_file(&path);
+    let out_asm_path = std::env::current_dir().unwrap().join("out.asm");
+    compile_file(&path, out_asm_path.to_str().unwrap(), target_override.as_deref());
 }
