@@ -7,6 +7,20 @@
 <a name="english"></a>
 ## 🇬🇧 English
 
+### Requirements & Build
+* **Rust** (stable toolchain)
+* **FASM** (included in the `kernel/FASM/` directory)
+
+To compile the compiler itself:
+```bash
+cargo build --release
+```
+
+To build a project using WiseL:
+```
+wisel build main.wise
+```
+
 ### Overview
 **WiseL-Project-Dev** is a lightweight, experimental programming language transpiler designed for low-level systems development. It translates custom script files into optimized FASM assembly for Windows (PE64) and Linux (ELF64).
 
@@ -19,6 +33,20 @@
 
 <a name="русский"></a>
 ## 🇷🇺 Русский
+
+### Требования и сборка
+* **Rust** (стабильная версия)
+* **FASM** (уже включен в папку `kernel/FASM/`)
+
+Чтобы собрать сам компилятор:
+```bash
+cargo build --release
+```
+
+Чтобы собрать проект на WiseL:
+```bash
+wisel build main.wise
+```
 
 ### Обзор
 **WiseL-Project-Dev** — это легковесный экспериментальный транслятор языка программирования, созданный для низкоуровневой системной разработки. Он преобразует исходный код в оптимизированный ассемблер FASM под Windows (PE64) и Linux (ELF64).
